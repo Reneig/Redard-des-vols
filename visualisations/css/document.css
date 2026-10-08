@@ -1,0 +1,96 @@
+/* ==========================================================================
+   document.css - mise en forme de la page de presentation du projet
+   (s'ajoute a style.css)
+   ========================================================================== */
+.doc main { max-width: 1040px; }
+.doc .card { padding: 32px 36px 28px; }
+.doc .card h2 { font-size: 23px; }
+.doc main p, .doc main li { color: var(--text-secondary); }
+.doc .hero p { color: #fff; }
+.doc main p strong, .doc main li strong { color: var(--text-primary); }
+.doc .lead-text { font-size: 16px; color: var(--text-primary); max-width: 860px; }
+.section-num {
+  flex: none; width: 44px; height: 44px; border-radius: 10px; display: grid; place-items: center;
+  background: var(--surface-2); color: var(--accent); font-weight: 700; font-size: 15px; border: 1px solid var(--border);
+}
+sup.ref a { text-decoration: none; font-weight: 600; font-size: 11px; padding: 0 2px; }
+
+/* chiffres cles du contexte */
+.facts { display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 14px; margin: 20px 0 8px; }
+.fact { border: 1px solid var(--border); border-radius: 10px; padding: 16px; background: var(--surface-1); }
+.fact .v { font-size: 28px; font-weight: 700; color: var(--accent); font-variant-numeric: tabular-nums; line-height: 1.2; }
+.fact .l { font-size: 13.5px; color: var(--text-secondary); margin-top: 4px; }
+.fact .s { font-size: 12px; color: var(--text-muted); margin-top: 6px; }
+
+/* questions de recherche */
+.questions { counter-reset: q; list-style: none; padding: 0; margin: 14px 0 0; display: grid; gap: 8px; }
+.questions li { counter-increment: q; position: relative; padding: 10px 12px 10px 46px; background: var(--surface-2); border-radius: 8px; }
+.questions li::before {
+  content: "Q" counter(q); position: absolute; left: 12px; top: 10px; font-weight: 700; color: var(--accent); font-size: 13px;
+}
+
+/* figure (titre + visuel + source) */
+figure.fig { margin: 22px 0 6px; }
+.fig-title { font-size: 14.5px; font-weight: 700; color: var(--text-primary); margin: 0 0 10px; }
+.fig-title span { color: var(--accent); }
+.fig-source { font-size: 12px; color: var(--text-muted); margin: 8px 0 0; }
+
+/* schema de la demarche */
+.pipeline { display: grid; grid-template-columns: repeat(4, 1fr); gap: 0; align-items: stretch; }
+.step { position: relative; background: var(--surface-2); border: 1px solid var(--border); border-radius: 10px; padding: 14px 14px 12px; margin-right: 26px; }
+.step:last-child { margin-right: 0; }
+.step:not(:last-child)::after {
+  content: ""; position: absolute; right: -21px; top: 50%; width: 16px; height: 2px; background: var(--text-muted);
+}
+.step:not(:last-child)::before {
+  content: ""; position: absolute; right: -21px; top: calc(50% - 4px); border: 5px solid transparent; border-left: 6px solid var(--text-muted);
+  transform: translateX(10px);
+}
+.step .k { font-size: 11.5px; text-transform: uppercase; letter-spacing: .06em; color: var(--accent); font-weight: 700; }
+.step .t { font-weight: 700; color: var(--text-primary); margin: 2px 0 6px; font-size: 14.5px; }
+.step ul { margin: 0; padding-left: 16px; font-size: 13px; }
+.step code { font-size: 12px; }
+@media (max-width: 860px) {
+  .pipeline { grid-template-columns: 1fr; gap: 22px; }
+  .step { margin-right: 0; }
+  .step:not(:last-child)::after { right: 50%; top: auto; bottom: -16px; width: 2px; height: 12px; }
+  .step:not(:last-child)::before { display: none; }
+}
+
+/* tableaux de documentation */
+table.data.doc-table td { vertical-align: top; }
+table.data.doc-table td code, .formula code { font-size: 12.5px; }
+code { font-family: "JetBrains Mono", "Cascadia Code", Consolas, monospace; background: var(--surface-2); border-radius: 4px; padding: 1px 5px; color: var(--text-primary); }
+.type { display: inline-block; font-size: 11.5px; font-weight: 600; padding: 1px 8px; border-radius: 999px; white-space: nowrap; }
+.type.txt { background: color-mix(in srgb, var(--series-7) 14%, transparent); color: var(--series-7); }
+.type.int { background: color-mix(in srgb, var(--series-1) 14%, transparent); color: var(--series-1); }
+.type.dec { background: color-mix(in srgb, var(--series-3) 16%, transparent); color: var(--series-3); }
+.src { display: inline-block; font-size: 11.5px; font-weight: 600; padding: 1px 8px; border-radius: 4px; background: var(--surface-2); color: var(--text-secondary); white-space: nowrap; }
+tr.group td { background: var(--surface-2); font-weight: 700; color: var(--text-primary); font-size: 12.5px; letter-spacing: .03em; }
+
+/* cartes KPI */
+.kpi-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 16px; margin-top: 18px; }
+.kpi-card { border: 1px solid var(--border); border-radius: 12px; padding: 18px 18px 14px; background: var(--surface-1); display: flex; flex-direction: column; }
+.kpi-card .head { display: flex; gap: 12px; align-items: center; margin-bottom: 8px; }
+.kpi-card .kpi-badge { width: 36px; height: 36px; font-size: 14px; }
+.kpi-card h3 { margin: 0; font-size: 15.5px; line-height: 1.3; }
+.kpi-card dl { margin: 6px 0 12px; display: grid; grid-template-columns: 96px 1fr; gap: 6px 10px; font-size: 13px; }
+.kpi-card dt { color: var(--text-muted); font-weight: 600; }
+.kpi-card dd { margin: 0; color: var(--text-secondary); }
+.kpi-card .go { margin-top: auto; font-size: 13.5px; font-weight: 600; text-decoration: none; }
+
+/* references */
+ol.refs { padding-left: 22px; font-size: 13.5px; }
+ol.refs li { margin-bottom: 8px; }
+ol.refs li:target { background: color-mix(in srgb, var(--series-4) 20%, transparent); border-radius: 4px; }
+.cta { display: inline-block; margin-top: 18px; background: #fff; color: #0d366b; text-decoration: none; font-weight: 700; padding: 10px 18px; border-radius: 8px; }
+.cta:hover { background: #e9f1fc; }
+.author { margin-top: 18px; font-size: 14px; opacity: .9; }
+
+/* pas de defilement horizontal sur mobile */
+ol.refs li, .step, .kpi-card dd { overflow-wrap: anywhere; }
+@media (max-width: 600px) {
+  .doc .card { padding: 22px 16px 18px; }
+  .kpi-card dl { grid-template-columns: 1fr; gap: 2px; }
+  .kpi-card dd { margin-bottom: 6px; }
+}

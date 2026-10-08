@@ -1,0 +1,278 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Retards des vols 2019-2025 — Tableau de bord D3.js</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="css/style.css">
+  <!-- Bibliotheque D3.js (https://d3js.org) et lecteur TopoJSON pour les fonds de carte -->
+  <script src="https://cdn.jsdelivr.net/npm/d3@7"></script>
+  <script src="https://cdn.jsdelivr.net/npm/topojson-client@3"></script>
+</head>
+<body>
+
+<div id="loading"><div class="box">
+  <div class="spinner"></div>
+  <strong>Chargement de la base…</strong>
+  <p id="loading-msg" style="color:var(--text-secondary);font-size:14px;margin:8px 0 0">
+    Lecture de <code>base/base.csv</code> (≈ 800 000 lignes) avec <code>d3.csv()</code>. Quelques secondes.</p>
+</div></div>
+
+<header class="hero"><div class="inner">
+  <p class="eyebrow">Master Big Data · Visualisation de l'information</p>
+  <h1>Les retards des vols aux États-Unis et en Europe, 2019‑2025</h1>
+  <p class="lead">Sept indicateurs construits avec <strong>D3.js</strong> à partir d'une seule base de données réelles :
+    les vols intérieurs américains du <em>Bureau of Transportation Statistics</em> et les aéroports européens d'<em>EUROCONTROL</em>.
+    Tous les calculs (moyennes, taux, coûts, corrélations, réseau) sont faits dans le navigateur.</p>
+  <div class="hero-stats" id="hero-stats"></div>
+  <p style="margin-top:22px"><a href="presentation.html" style="color:#fff;font-weight:600">Lire la présentation du projet : contexte, sources, variables et KPIs →</a></p>
+</div></header>
+
+<nav class="toc"><div class="inner">
+  <a href="#kpi1">1 · Évolution des retards</a>
+  <a href="#kpi2">2 · Causes</a>
+  <a href="#kpi3">3 · Carte des aéroports</a>
+  <a href="#kpi4">4 · Coût des retards</a>
+  <a href="#kpi5">5 · Satisfaction</a>
+  <a href="#kpi6">6 · Coût × satisfaction</a>
+  <a href="#kpi7">7 · Réseau des aéroports</a>
+  <a href="#sources">Sources</a>
+  <a href="presentation.html">Présentation du projet ↗</a>
+</div></nav>
+
+<main>
+
+<!-- ====================================================== KPI 1 -->
+<section class="card" id="kpi1">
+  <header><div class="kpi-badge">1</div><div>
+    <h2>Évolution du retard moyen d'un aéroport vers ses destinations</h2>
+    <p class="subtitle">Courbes mensuelles, janvier 2019 à décembre 2025</p></div></header>
+  <p class="explain">Choisissez un <strong>aéroport de départ</strong> et jusqu'à <strong>quatre destinations</strong> du même pays.
+    Le retard moyen est la moyenne de l'écart à l'heure d'arrivée prévue (les avances comptent en négatif) ;
+    un vol est <strong>en retard</strong> s'il arrive au moins 15 minutes après l'heure prévue.
+    En Europe, EUROCONTROL ne publie pas le détail par liaison : on suit la moyenne de l'aéroport.</p>
+  <div class="controls">
+    <div class="control"><span class="lab">Zone</span><div id="k1-zone"></div></div>
+    <div class="control"><label for="k1-aeroport">Aéroport de départ</label><select id="k1-aeroport"></select></div>
+    <div class="control" id="k1-metrique-wrap"><span class="lab">Indicateur</span><div id="k1-metrique"></div></div>
+  </div>
+  <div class="control" id="k1-dest-wrap" style="margin-bottom:12px"><span class="lab">Destinations (10 plus fréquentes, 4 au maximum)</span>
+    <div class="checks" id="k1-dests"></div></div>
+  <div id="k1-legende"></div>
+  <p class="fig-title"><span>Figure 1.</span> Retard mensuel au départ de l'aéroport choisi, par destination (2019-2025)</p>
+  <div class="chart" id="k1-chart"></div>
+  <p class="fig-source">Source : BTS (USA) ou EUROCONTROL (Europe) — moyennes pondérées par le nombre de vols, calculs D3.js.</p>
+  <p class="insight" id="k1-insight"></p>
+  <div id="k1-table"></div>
+</section>
+
+<!-- ====================================================== KPI 2 -->
+<section class="card" id="kpi2">
+  <header><div class="kpi-badge">2</div><div>
+    <h2>Répartition des causes de retard</h2>
+    <p class="subtitle">Part des minutes de retard attribuée à chaque cause, par année</p></div></header>
+  <p class="explain">Aux USA, chaque minute de retard d'un vol arrivé avec 15 minutes ou plus de retard est attribuée par la compagnie
+    à l'une des <strong>cinq causes officielles du BTS</strong>. En Europe, les causes publiées concernent les
+    <strong>retards ATFM</strong>, c'est-à-dire imposés par la régulation du trafic aérien à l'arrivée d'un aéroport. La variable « cause » n'est pas une colonne de la base : elle est construite
+    à partir des 5 colonnes de minutes par cause (voir la <a href="presentation.html#calculs">présentation, section 5.2</a>).</p>
+  <div class="controls">
+    <div class="control"><span class="lab">Zone</span><div id="k2-zone"></div></div>
+    <div class="control"><label id="k2-f1-lab" for="k2-f1">Compagnie</label><select id="k2-f1"></select></div>
+    <div class="control"><label for="k2-f2">Aéroport</label><select id="k2-f2"></select></div>
+    <div class="control"><span class="lab">Affichage</span><div id="k2-mode"></div></div>
+  </div>
+  <div id="k2-legende"></div>
+  <p class="fig-title"><span>Figure 2.</span> Répartition annuelle des minutes de retard par cause</p>
+  <div class="chart" id="k2-chart"></div>
+  <p class="fig-source">Source : BTS, causes de retard déclarées par les compagnies (USA) ; EUROCONTROL, codes de retard ATFM (Europe).</p>
+  <p class="insight" id="k2-insight"></p>
+  <div class="note" id="k2-note" style="display:none"><b>Attention :</b> en Europe, ces causes ne couvrent que les retards ATFM
+    (régulation du trafic), pas l'ensemble des retards. Elles ne sont donc pas comparables aux causes américaines.</div>
+  <div id="k2-table"></div>
+</section>
+
+<!-- ====================================================== KPI 3 -->
+<section class="card" id="kpi3">
+  <header><div class="kpi-badge">3</div><div>
+    <h2>Carte des aéroports : trafic et retards</h2>
+    <p class="subtitle">Taille du cercle = nombre de vols ; couleur = niveau de retard</p></div></header>
+  <p class="explain">Chaque cercle est un aéroport. Survolez-le pour lire ses chiffres. La vue <strong>USA + Europe</strong>
+    montre les deux réseaux côte à côte ; la couleur y indique seulement la zone, car les mesures de retard des deux sources sont différentes.</p>
+  <div class="controls">
+    <div class="control"><span class="lab">Zone</span><div id="k3-zone"></div></div>
+    <div class="control"><label for="k3-annee">Année</label><select id="k3-annee"></select></div>
+    <div class="control"><label for="k3-mois">Mois</label><select id="k3-mois"></select></div>
+    <div class="control"><span class="lab">Couleur</span><div id="k3-metrique"></div></div>
+  </div>
+  <div id="k3-legende"></div>
+  <p class="fig-title"><span>Figure 3.</span> Trafic et niveau de retard des aéroports</p>
+  <div class="chart" id="k3-chart"></div>
+  <p class="fig-source">Sources : BTS, EUROCONTROL ; coordonnées OurAirports ; fonds de carte world-atlas et us-atlas.</p>
+  <div class="note warn" id="k3-note2" style="display:none"><b>2019 :</b> EUROCONTROL ne publie le retard au départ toutes causes
+    qu'à partir de 2020. Choisissez « Retard ATFM / arrivée » pour 2019.</div>
+  <div id="k3-table"></div>
+</section>
+
+<!-- ====================================================== KPI 4 -->
+<section class="card" id="kpi4">
+  <header><div class="kpi-badge">4</div><div>
+    <h2>Coût estimé des retards</h2>
+    <p class="subtitle">Minutes de retard réelles × coût publié d'une minute de retard</p></div></header>
+  <div class="def-list">
+    <div><b>USA</b>minutes de retard à l'arrivée (BTS) × coût moyen d'une minute pour une compagnie américaine (Airlines for America, dollars de l'année).</div>
+    <div><b>Europe</b>minutes de retard ATFM (EUROCONTROL) × 100 € par minute, valeur de référence d'EUROCONTROL (prix 2022).</div>
+    <div><b>Lecture</b>ordre de grandeur du coût direct pour les compagnies ; les dollars et les euros ne sont jamais additionnés.</div>
+  </div>
+  <div class="controls">
+    <div class="control"><span class="lab">Zone</span><div id="k4-zone"></div></div>
+    <div class="control"><label for="k4-annee">Année</label><select id="k4-annee"></select></div>
+  </div>
+  <div class="tiles" id="k4-tiles"></div>
+  <div class="note warn" id="k4-note2020" style="display:none"><b>2020 :</b> Airlines for America n'a pas publié de coût par minute
+    pour cette année ; le coût n'est donc pas calculé (les minutes de retard restent affichées).</div>
+  <div class="grid-2">
+    <div><p class="fig-title"><span>Figure 4a.</span> <span id="k4-bars-titre" style="color:inherit"></span></p><div class="chart" id="k4-bars"></div></div>
+    <div><p class="fig-title"><span>Figure 4b.</span> Évolution du coût total estimé, 2019-2025</p><div class="chart" id="k4-evol"></div></div>
+  </div>
+  <p class="fig-source">Sources : minutes de retard BTS / EUROCONTROL ; coût d'une minute Airlines for America (USD courants) et EUROCONTROL Standard Inputs (100 €, prix 2022).</p>
+  <div id="k4-table"></div>
+</section>
+
+<!-- ====================================================== KPI 5 -->
+<section class="card" id="kpi5">
+  <header><div class="kpi-badge">5</div><div>
+    <h2>Satisfaction des passagers et retard moyen par compagnie</h2>
+    <p class="subtitle">Score ACSI (sur 100) face au retard moyen, compagnies américaines</p></div></header>
+  <p class="explain">L'<strong>ACSI</strong> (American Customer Satisfaction Index) note chaque année la satisfaction des passagers des grandes
+    compagnies américaines. L'enquête publiée l'année N couvre avril N-1 à mars N : elle est comparée ici aux vols de l'année N-1.
+    La taille du point indique le nombre de vols. Utilisez le curseur ou le bouton <strong>Animer</strong>.</p>
+  <div class="controls">
+    <div class="control"><span class="lab">Année des vols : <span class="range-value" id="k5-an-val"></span></span>
+      <input type="range" id="k5-an"></div>
+    <div class="control"><span class="lab">&nbsp;</span><button class="play" id="k5-play" type="button">▶ Animer</button></div>
+    <div class="control"><span class="lab">Axe horizontal</span><div id="k5-x"></div></div>
+  </div>
+  <p class="fig-title"><span>Figure 5.</span> Score de satisfaction ACSI et retard moyen des compagnies américaines</p>
+  <div class="chart" id="k5-chart"></div>
+  <p class="fig-source">Sources : ACSI (satisfaction), BTS (retards) — taille du point proportionnelle au nombre de vols.</p>
+  <div id="k5-table"></div>
+</section>
+
+<!-- ====================================================== KPI 6 -->
+<section class="card" id="kpi6">
+  <header><div class="kpi-badge">6</div><div>
+    <h2>Le coût des retards est-il lié à la satisfaction ?</h2>
+    <p class="subtitle">Corrélation entre le coût moyen du retard par vol et le score ACSI</p></div></header>
+  <div class="def-list">
+    <div><b>Un point</b>une compagnie pour une année de vols (2020 exclue : pas de coût publié).</div>
+    <div><b>Pearson r</b>mesure une relation linéaire, de −1 à +1 (0 = aucune relation).</div>
+    <div><b>Spearman ρ</b>compare les classements : moins sensible aux valeurs extrêmes.</div>
+  </div>
+  <div class="controls">
+    <div class="control"><label for="k6-an">Période</label><select id="k6-an"></select></div>
+    <div class="control"><label for="k6-focus">Suivre une compagnie</label><select id="k6-focus"></select></div>
+  </div>
+  <div class="tiles" id="k6-tiles"></div>
+  <p class="fig-title"><span>Figure 6.</span> Coût moyen du retard par vol et satisfaction des passagers (compagnie × année)</p>
+  <div class="chart" id="k6-chart"></div>
+  <p class="fig-source">Sources : BTS, Airlines for America, ACSI — corrélations et droite des moindres carrés calculées en JavaScript.</p>
+  <p class="insight" id="k6-insight"></p>
+  <div id="k6-table"></div>
+</section>
+
+<!-- ====================================================== KPI 7 -->
+<section class="card" id="kpi7">
+  <header><div class="kpi-badge">7</div><div>
+    <h2>Réseau dynamique des connexions entre aéroports</h2>
+    <p class="subtitle">Liaisons directes du mois, aux États-Unis</p></div></header>
+  <p class="explain">Chaque <strong>nœud</strong> est un aéroport (taille = vols au départ et à l'arrivée) ; chaque <strong>lien</strong>
+    est une liaison directe dont l'épaisseur indique le nombre de vols (dans les deux sens) et la couleur le retard moyen.
+    Faites défiler les mois ou cliquez sur <strong>Animer</strong> pour voir le réseau se contracter en 2020 puis se reconstruire.
+    Cliquez sur un aéroport pour isoler ses liaisons. EUROCONTROL ne publie pas les liaisons entre aéroports européens.</p>
+  <div class="controls">
+    <div class="control"><span class="lab">Mois : <span class="range-value" id="k7-mois-val"></span></span>
+      <input type="range" id="k7-mois"></div>
+    <div class="control"><span class="lab">&nbsp;</span><button class="play" id="k7-play" type="button">▶ Animer</button></div>
+    <div class="control"><span class="lab">Liaisons d'au moins <span class="range-value" id="k7-seuil-val"></span> vols / mois</span>
+      <input type="range" id="k7-seuil" min="50" max="1500" step="50"></div>
+    <div class="control"><span class="lab">Disposition</span><div id="k7-vue"></div></div>
+  </div>
+  <div class="tiles" id="k7-tiles"></div>
+  <div id="k7-legende"></div>
+  <p class="fig-title"><span>Figure 7.</span> Réseau des liaisons directes entre aéroports américains, <span id="k7-fig-mois" style="color:inherit"></span></p>
+  <div class="chart" id="k7-chart"></div>
+  <p class="fig-source">Source : BTS, Reporting Carrier On-Time Performance — épaisseur = vols du mois (deux sens), couleur = retard moyen.</p>
+  <div id="k7-table"></div>
+</section>
+
+</main>
+
+<footer id="sources">
+  <h2>Sources et méthode</h2>
+  <ul>
+    <li><b>Vols USA</b> : Bureau of Transportation Statistics, <a href="https://www.transtats.bts.gov/Fields.asp?gnoyr_VQ=FGJ">Reporting Carrier On-Time Performance</a> (vol par vol, agrégé par compagnie, liaison et mois).</li>
+    <li><b>Aéroports européens</b> : EUROCONTROL, <a href="https://ansperformance.eu/data/">Aviation Intelligence Portal</a> (trafic, retards ATFM à l'arrivée, retards au départ toutes causes).</li>
+    <li><b>Coordonnées</b> : <a href="https://ourairports.com/data/">OurAirports</a>. Fonds de carte : <a href="https://github.com/topojson/world-atlas">world-atlas</a> et <a href="https://github.com/topojson/us-atlas">us-atlas</a>.</li>
+    <li><b>Coût d'une minute</b> : <a href="https://www.airlines.org/dataset/u-s-passenger-carrier-delay-costs/">Airlines for America</a> et <a href="https://ansperformance.eu/economics/cba/standard-inputs/chapters/cost_of_delay.html">EUROCONTROL Standard Inputs</a>.</li>
+    <li><b>Satisfaction</b> : <a href="https://theacsi.org/industries/travel/airlines/">American Customer Satisfaction Index</a>.</li>
+  </ul>
+  <p>La base <code>base/base.csv</code> est construite par <code>code/construire_base.py</code> ; le détail des sources est dans <code>SOURCES.md</code>.
+    Les visualisations sont réalisées avec <a href="https://d3js.org/">D3.js</a> version 7.</p>
+  <p id="meta-chargement"></p>
+</footer>
+
+<script src="js/commun.js"></script>
+<script src="js/kpi1.js"></script>
+<script src="js/kpi2.js"></script>
+<script src="js/kpi3.js"></script>
+<script src="js/kpi4.js"></script>
+<script src="js/kpi5.js"></script>
+<script src="js/kpi6.js"></script>
+<script src="js/kpi7.js"></script>
+<script>
+(async function demarrer() {
+  try {
+    const [, monde, usa] = await Promise.all([
+      chargerBase(),
+      d3.json(APP.URL_MONDE),
+      d3.json(APP.URL_USA),
+    ]);
+    const fonds = {
+      pays: topojson.feature(monde, monde.objects.countries),
+      etats: topojson.feature(usa, usa.objects.states),
+    };
+
+    // chiffres cles de l'en-tete (calcules a partir de la base)
+    const tUS = sommeUS(APP.us), tEU = sommeEU(APP.eu);
+    d3.select("#hero-stats").selectAll("div").data([
+      { v: fmt.int(tUS.n), l: "vols intérieurs USA 2019-2025" },
+      { v: fmt.pct(tUS.tauxRetard), l: "des vols USA arrivés avec ≥ 15 min de retard" },
+      { v: fmt.int(tEU.dep), l: "départs IFR des aéroports européens" },
+      { v: fmt.int(APP.aeroports.size), l: "aéroports dans la base" },
+    ]).join("div").attr("class", "hero-stat").html(d => `<div class="v">${d.v}</div><div class="l">${d.l}</div>`);
+
+    kpi1(); kpi2(); kpi3(fonds); kpi4(); kpi5(); kpi6(); kpi7(fonds);
+    d3.select("#meta-chargement").text(`Base chargée : ${fmt.int(APP.us.length + APP.eu.length)} lignes en ${fmt.dec1(APP.dureeChargement)} s.`);
+    d3.select("#loading").remove();
+  } catch (err) {
+    console.error(err);
+    d3.select("#loading-msg").html(`<b style="color:var(--series-8)">Impossible de lire la base.</b><br>
+      Ouvrez cette page via un petit serveur local (voir README) : dans le dossier du projet,
+      <code>python -m http.server 8000</code> puis <code>http://localhost:8000/visualisations/</code>.<br>
+      <small>${err}</small>`);
+    d3.select(".spinner").remove();
+  }
+})();
+
+// lien actif dans le menu
+const liens = d3.selectAll("nav.toc a");
+window.addEventListener("scroll", () => {
+  let actif = null;
+  document.querySelectorAll("main section").forEach(s => { if (s.getBoundingClientRect().top < 120) actif = s.id; });
+  liens.classed("active", function () { return this.getAttribute("href") === "#" + actif; });
+});
+</script>
+</body>
+</html>

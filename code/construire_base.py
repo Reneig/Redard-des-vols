@@ -3,7 +3,8 @@
 =====================================================================
  Projet "Visualisation de l'information" - Retards des vols (D3.js)
  Construction de la base finale  ->  base/base.csv
- + fichiers KPI 6 (correlation cout/satisfaction) et KPI 7 (reseau des aeroports)
+
+ Les KPIs et les visualisations sont calcules dans le navigateur avec D3.js (dossier visualisations/).
 =====================================================================
 
 Principe : AUCUNE donnée simulée ni inventée.
@@ -99,6 +100,14 @@ def telecharger(url, chemin, obligatoire=True):
     return False
 
 
+def lire_csv(source, **kw):
+    """Lit un CSV en UTF-8 ; si le fichier est en Windows-1252/Latin-1 (cas de L_AIRPORT du BTS), relit dans cet encodage."""
+    try:
+        return pd.read_csv(source, encoding="utf-8", **kw)
+    except UnicodeDecodeError:
+        return pd.read_csv(source, encoding="cp1252", encoding_errors="replace", **kw)
+
+
 # --------------------------------------------------------------------------- 1. BTS vols USA
 COLS_BTS = ["Year", "Month", "Reporting_Airline", "Origin", "OriginCityName", "OriginState",
             "Dest", "DestCityName", "DestState", "DepDelay", "DepDel15", "ArrDelay",
@@ -154,26 +163,19 @@ def construire_usa():
     print("\n[1] BTS - vols USA")
     morceaux = [agreger_bts(a, m) for a in ANNEES for m in MOIS]
     us = pd.concat([x for x in morceaux if x is not None], ignore_index=True)
-    us["retard_moyen_arrivee_min"] = us.somme_retard_arrivee_signe_min / us.nb_vols_arrives
-    us["retard_moyen_depart_min"] = us.somme_retard_depart_signe_min / us.nb_vols_partis
-    us["taux_retard_arrivee_15"] = us.nb_retards_arrivee_15 / us.nb_vols_arrives
-    us["taux_annulation"] = us.nb_annules / us.nb_vols
-    us = us.drop(columns=["somme_retard_arrivee_signe_min", "somme_retard_depart_signe_min", "nb_vols_partis"])
+    us = us.rename(columns={"somme_retard_arrivee_signe_min": "somme_retard_arrivee_min",
+                            "somme_retard_depart_signe_min": "somme_retard_depart_min"})
 
-    # tables de correspondance BTS
+    # tables de correspondance BTS (noms des compagnies et des aeroports)
     f_car = os.path.join(BRUT, "bts_lookup", "L_UNIQUE_CARRIERS.csv")
     f_apt = os.path.join(BRUT, "bts_lookup", "L_AIRPORT.csv")
     telecharger(URL_BTS_CARRIERS, f_car)
     telecharger(URL_BTS_AIRPORTS, f_apt)
-    car = pd.read_csv(f_car).rename(columns={"Code": "compagnie_code", "Description": "compagnie_nom"})
-    apt = pd.read_csv(f_apt).rename(columns={"Code": "code", "Description": "nom_bts"})
+    car = lire_csv(f_car).rename(columns={"Code": "compagnie_code", "Description": "compagnie_nom"})
     us = us.merge(car, on="compagnie_code", how="left")
-    us["nom_aeroport_origine"] = us.aeroport_origine.map(apt.set_index("code").nom_bts)
-    us["nom_aeroport_destination"] = us.aeroport_destination.map(apt.set_index("code").nom_bts)
-    us["source_donnees"] = "BTS On-Time Performance"
+    us["nom_origine"] = us.ville_origine          # ex. "New York, NY"
     us["zone"] = "USA"
     us["pays"] = "United States"
-    us["type_liaison"] = "domestique (USA)"
     us["devise_cout"] = "USD"
     return us
 
@@ -193,7 +195,7 @@ def lire_ec(fichier):
     chemin = os.path.join(BRUT, "eurocontrol", fichier)
     if not telecharger(url, chemin, obligatoire=False):
         return None
-    d = pd.read_csv(chemin, compression="bz2" if fichier.endswith(".bz2") else None, low_memory=False)
+    d = lire_csv(chemin, compression="bz2" if fichier.endswith(".bz2") else None, low_memory=False)
     d.columns = [c.upper() for c in d.columns]
     return d
 
@@ -233,11 +235,8 @@ def construire_europe():
     eu = pd.concat(res, ignore_index=True).rename(
         columns={"YEAR": "annee", "MONTH_NUM": "mois", "APT_ICAO": "aeroport_origine"})
     eu["nb_vols"] = eu.nb_departs
-    eu["retard_moyen_depart_min"] = eu.depart_min_retard_toutes_causes / eu.nb_departs_avec_mesure_retard
-    eu["atfm_retard_moyen_par_arrivee_min"] = eu.atfm_min_total / eu.nb_arrivees
-    eu["source_donnees"] = "EUROCONTROL Aviation Intelligence Portal"
+    eu["nom_origine"] = eu.nom_aeroport_origine
     eu["zone"] = "Europe"
-    eu["type_liaison"] = "toutes destinations (pas de detail origine-destination publie)"
     eu["devise_cout"] = "EUR"
     return eu
 
@@ -301,148 +300,97 @@ def coordonnees():
     print("\n[4] OurAirports - coordonnees")
     for f in ["airports.csv", "countries.csv"]:
         telecharger(URL_OURAIRPORTS.format(f=f), os.path.join(BRUT, "ourairports", f))
-    ap = pd.read_csv(os.path.join(BRUT, "ourairports", "airports.csv"), low_memory=False,
-                     usecols=["ident", "iata_code", "gps_code", "name", "latitude_deg", "longitude_deg",
+    ap = lire_csv(os.path.join(BRUT, "ourairports", "airports.csv"), low_memory=False,
+                     usecols=["ident", "iata_code", "gps_code", "icao_code", "name", "latitude_deg", "longitude_deg",
                               "iso_country", "municipality", "type"])
     return ap
 
 
-# --------------------------------------------------------------------------- 6. fichiers KPI 6 et 7 (dérivés de base.csv)
-def fichiers_kpi(base):
-    """KPI 6 : correlation cout du retard / satisfaction ; KPI 7 : reseau des aeroports (USA, BTS)."""
-    print("\n[6] Fichiers KPI 6 (correlation) et KPI 7 (reseau)")
-    us = base[base.zone == "USA"]
-
-    # KPI 6 : une ligne = une compagnie x une annee
-    k6 = us.groupby(["annee", "compagnie_code", "compagnie_nom"], as_index=False, dropna=False).agg(
-        nb_vols=("nb_vols", "sum"), nb_vols_arrives=("nb_vols_arrives", "sum"),
-        nb_retards_arrivee_15=("nb_retards_arrivee_15", "sum"),
-        minutes_retard_arrivee_totales=("minutes_retard_arrivee_totales", "sum"),
-        cout_retard_total_usd=("cout_retard_estime", lambda x: x.sum(min_count=1)),
-        score_acsi_0_100=("score_acsi_0_100", "first"), annee_acsi=("annee_acsi", "first"))
-    k6["cout_moyen_retard_par_vol_usd"] = (k6.cout_retard_total_usd / k6.nb_vols).round(2)
-    k6["taux_retard_arrivee_15"] = (k6.nb_retards_arrivee_15 / k6.nb_vols_arrives).round(4)
-    k6 = k6[k6.score_acsi_0_100.notna() & k6.cout_moyen_retard_par_vol_usd.notna()]
-    k6.to_csv(os.path.join(BASE, "kpi6_correlation_cout_satisfaction.csv"), index=False)
-    if len(k6) >= 3:
-        r = k6.cout_moyen_retard_par_vol_usd.corr(k6.score_acsi_0_100)
-        rho = k6.cout_moyen_retard_par_vol_usd.corr(k6.score_acsi_0_100, method="spearman")
-        pd.DataFrame([{"periode": "toutes annees", "n_points": len(k6), "pearson_r": round(r, 3),
-                       "spearman_rho": round(rho, 3)}] +
-                     [{"periode": int(a), "n_points": len(g),
-                       "pearson_r": round(g.cout_moyen_retard_par_vol_usd.corr(g.score_acsi_0_100), 3) if len(g) >= 3 else np.nan,
-                       "spearman_rho": round(g.cout_moyen_retard_par_vol_usd.corr(g.score_acsi_0_100, method="spearman"), 3) if len(g) >= 3 else np.nan}
-                      for a, g in k6.groupby("annee")]
-                     ).to_csv(os.path.join(BASE, "kpi6_coefficients_correlation.csv"), index=False)
-        print(f"  KPI 6 : {len(k6)} points, Pearson r = {r:.3f}, Spearman rho = {rho:.3f}")
-
-    # KPI 7 : liens = liaisons directes (toutes compagnies), par annee et mois
-    liens = us.groupby(["annee", "mois", "aeroport_origine", "aeroport_destination"], as_index=False).agg(
-        nb_vols=("nb_vols", "sum"), nb_vols_arrives=("nb_vols_arrives", "sum"),
-        nb_retards_arrivee_15=("nb_retards_arrivee_15", "sum"),
-        somme_retard=("retard_moyen_arrivee_min", lambda x: (x * us.loc[x.index, "nb_vols_arrives"]).sum()),
-        nb_compagnies=("compagnie_code", "nunique"), distance_km=("distance_km", "mean"))
-    liens["retard_moyen_arrivee_min"] = (liens.somme_retard / liens.nb_vols_arrives).round(2)
-    liens["taux_retard_arrivee_15"] = (liens.nb_retards_arrivee_15 / liens.nb_vols_arrives).round(4)
-    liens = liens.drop(columns="somme_retard")
-    liens["distance_km"] = liens.distance_km.round(0)
-    liens.to_csv(os.path.join(BASE, "kpi7_reseau_liens.csv"), index=False)
-
-    # noeuds = aeroports, par annee et mois (vols au depart + a l'arrivee, nombre de connexions)
-    dep = liens.groupby(["annee", "mois", "aeroport_origine"]).agg(
-        vols_depart=("nb_vols", "sum"), retards_dep=("nb_retards_arrivee_15", "sum"),
-        arrives_dep=("nb_vols_arrives", "sum"), destinations=("aeroport_destination", "nunique"))
-    arr = liens.groupby(["annee", "mois", "aeroport_destination"]).agg(
-        vols_arrivee=("nb_vols", "sum"), provenances=("aeroport_origine", "nunique"))
-    dep.index.names = arr.index.names = ["annee", "mois", "aeroport"]
-    noeuds = dep.join(arr, how="outer").fillna(0).reset_index()
-    noeuds["nb_vols_total"] = noeuds.vols_depart + noeuds.vols_arrivee
-    noeuds["degre_sortant"] = noeuds.destinations.astype(int)
-    noeuds["degre_entrant"] = noeuds.provenances.astype(int)
-    noeuds["taux_retard_arrivee_15_vols_partis"] = (noeuds.retards_dep / noeuds.arrives_dep.replace(0, np.nan)).round(4)
-    cols = ["nom_aeroport", "ville", "etat", "latitude", "longitude"]
-    o = us[["aeroport_origine"] + [c + "_origine" for c in cols]]
-    o.columns = ["aeroport"] + cols
-    d = us[["aeroport_destination"] + [c + "_destination" for c in cols]]
-    d.columns = ["aeroport"] + cols
-    info = pd.concat([o, d]).dropna(subset=["nom_aeroport"]).drop_duplicates("aeroport").set_index("aeroport")
-    for c in cols:
-        noeuds[c] = noeuds.aeroport.map(info[c])
-    noeuds = noeuds[["annee", "mois", "aeroport", "nom_aeroport", "ville", "etat", "latitude", "longitude",
-                     "nb_vols_total", "vols_depart", "vols_arrivee", "degre_sortant", "degre_entrant",
-                     "taux_retard_arrivee_15_vols_partis"]]
-    noeuds.to_csv(os.path.join(BASE, "kpi7_reseau_noeuds.csv"), index=False)
-    print(f"  KPI 7 : {len(noeuds):,} noeuds-mois, {len(liens):,} liens-mois")
+# --------------------------------------------------------------------------- 5. assemblage de la base
+# La base contient des SOMMES (vols, minutes, retards) et non des moyennes :
+# les KPIs (moyennes, taux, couts, correlations...) sont calcules dans le navigateur avec D3.js,
+# en additionnant d'abord les lignes puis en divisant (moyennes correctement ponderees).
+COLONNES = [
+    # identification
+    "zone", "pays", "annee", "mois",
+    "aeroport_origine", "nom_origine", "latitude_origine", "longitude_origine",
+    "aeroport_destination", "distance_km", "compagnie_code", "compagnie_nom",
+    # volumes et retards (USA, BTS)
+    "nb_vols", "nb_annules", "nb_detournes", "nb_vols_arrives", "nb_vols_partis",
+    "nb_retards_arrivee_15", "nb_retards_depart_15",
+    "somme_retard_arrivee_min", "somme_retard_depart_min", "minutes_retard_arrivee_totales",
+    *CAUSES_BTS.values(),
+    # aeroports europeens (EUROCONTROL)
+    "nb_departs", "nb_arrivees", "atfm_min_total", *GROUPES_ATFM.keys(),
+    "atfm_nb_arrivees_retardees", "atfm_nb_arrivees_retardees_15",
+    "depart_min_retard_toutes_causes", "nb_departs_avec_mesure_retard",
+    # references
+    "cout_par_minute", "devise_cout", "score_acsi_0_100", "annee_acsi",
+]
 
 
-# --------------------------------------------------------------------------- 5. assemblage
 def main():
     us = construire_usa()
     eu = construire_europe()
     couts, acsi = tables_reference()
     ap = coordonnees()
 
-    # coordonnées : USA par code IATA, Europe par code ICAO
+    # coordonnees : USA par code IATA, Europe par code ICAO
     rang = {"large_airport": 0, "medium_airport": 1, "small_airport": 2}
     ap["r"] = ap["type"].map(rang).fillna(3)
-    iata = ap[ap.iata_code.notna()].sort_values("r").drop_duplicates("iata_code").set_index("iata_code")
-    icao = ap.drop_duplicates("ident").set_index("ident")
-    for col, src in [("latitude_origine", "latitude_deg"), ("longitude_origine", "longitude_deg")]:
-        us[col] = us.aeroport_origine.map(iata[src])
-        eu[col] = eu.aeroport_origine.map(icao[src])
-    us["latitude_destination"] = us.aeroport_destination.map(iata.latitude_deg)
-    us["longitude_destination"] = us.aeroport_destination.map(iata.longitude_deg)
-    us["code_iata_origine"] = us.aeroport_origine
-    us["code_icao_origine"] = us.aeroport_origine.map(iata.ident)
-    eu["code_icao_origine"] = eu.aeroport_origine
-    eu["code_iata_origine"] = eu.aeroport_origine.map(icao.iata_code)
+    ap = ap.sort_values("r")
 
-    # coûts
-    cu = couts[couts.zone == "USA"].set_index("annee").cout_par_minute
-    us["cout_par_minute"] = us.annee.map(cu)                       # NaN pour 2020 (non publié)
-    us["cout_retard_estime"] = us.minutes_retard_arrivee_totales * us.cout_par_minute
-    us["base_calcul_cout"] = "minutes de retard a l'arrivee x cout A4A par minute"
-    eu["cout_par_minute"] = 100.0
-    eu["cout_retard_estime"] = eu.atfm_min_total * eu.cout_par_minute
-    eu["base_calcul_cout"] = "minutes de retard ATFM a l'arrivee x 100 EUR (EUROCONTROL)"
+    def table(col):
+        t = ap[ap[col].notna()].drop_duplicates(col).set_index(col)
+        return t[["latitude_deg", "longitude_deg"]]
 
-    # satisfaction (USA uniquement)
+    def coord(codes, essais):
+        """Cherche chaque code dans plusieurs colonnes OurAirports (le premier trouve est retenu)."""
+        res = pd.DataFrame(index=pd.Index(codes.unique()), columns=["latitude_deg", "longitude_deg"], dtype=float)
+        for col, prefixe in essais:
+            t = table(col)
+            manque = res.latitude_deg.isna()
+            cles = [prefixe + c for c in res.index[manque]]
+            res.loc[manque, :] = t.reindex(cles).values
+        return codes.map(res.latitude_deg), codes.map(res.longitude_deg)
+
+    # USA : code IATA, puis code OACI "K" + IATA (ex. PBI -> KPBI)
+    us["latitude_origine"], us["longitude_origine"] = coord(
+        us.aeroport_origine, [("iata_code", ""), ("ident", "K"), ("gps_code", "K"), ("icao_code", "K")])
+    # Europe : code OACI dans ident, gps_code puis icao_code (aeroports renommes)
+    eu["latitude_origine"], eu["longitude_origine"] = coord(
+        eu.aeroport_origine, [("ident", ""), ("gps_code", ""), ("icao_code", "")])
+
+    # cout d'une minute de retard (valeur de reference de l'annee)
+    us["cout_par_minute"] = us.annee.map(couts[couts.zone == "USA"].set_index("annee").cout_par_minute)
+    eu["cout_par_minute"] = eu.annee.map(couts[couts.zone == "Europe"].set_index("annee").cout_par_minute)
+
+    # satisfaction ACSI (USA) : enquete ACSI N rattachee aux vols de l'annee N-1
     s = acsi[acsi.compagnie_code.notna()][["compagnie_code", "annee_vols_associee", "score_acsi_0_100", "annee_acsi"]]
     us = us.merge(s.rename(columns={"annee_vols_associee": "annee"}), on=["compagnie_code", "annee"], how="left")
 
-    colonnes = [
-        "source_donnees", "zone", "pays", "annee", "mois",
-        "aeroport_origine", "code_icao_origine", "code_iata_origine", "nom_aeroport_origine", "ville_origine",
-        "etat_origine", "latitude_origine", "longitude_origine",
-        "type_liaison", "aeroport_destination", "nom_aeroport_destination", "ville_destination",
-        "etat_destination", "latitude_destination", "longitude_destination", "distance_km",
-        "compagnie_code", "compagnie_nom",
-        "nb_vols", "nb_departs", "nb_arrivees", "nb_annules", "nb_detournes", "nb_vols_arrives",
-        "nb_retards_arrivee_15", "nb_retards_depart_15", "taux_retard_arrivee_15", "taux_annulation",
-        "retard_moyen_arrivee_min", "retard_moyen_depart_min", "minutes_retard_arrivee_totales",
-        *CAUSES_BTS.values(),
-        "atfm_min_total", *GROUPES_ATFM.keys(), "atfm_nb_arrivees_retardees", "atfm_nb_arrivees_retardees_15",
-        "atfm_retard_moyen_par_arrivee_min", "depart_min_retard_toutes_causes", "nb_departs_avec_mesure_retard",
-        "cout_par_minute", "devise_cout", "cout_retard_estime", "base_calcul_cout",
-        "score_acsi_0_100", "annee_acsi"]
     base = pd.concat([us, eu], ignore_index=True)
-    for c in colonnes:
+    for c in COLONNES:
         if c not in base.columns:
             base[c] = np.nan
-    base = base[colonnes].sort_values(["zone", "annee", "mois", "aeroport_origine"]).reset_index(drop=True)
-    for c in base.select_dtypes("float").columns:
-        base[c] = base[c].round(3)
-    base.to_csv(os.path.join(BASE, "base.csv"), index=False, encoding="utf-8")
+    base = base[COLONNES].sort_values(["zone", "annee", "mois", "aeroport_origine"]).reset_index(drop=True)
+    base["distance_km"] = base.distance_km.round(0)
+    base["latitude_origine"] = base.latitude_origine.round(4)
+    base["longitude_origine"] = base.longitude_origine.round(4)
+    # entiers sans ".0" (fichier plus leger pour le navigateur)
+    for c in base.columns:
+        if base[c].dtype.kind == "f" and c not in ("latitude_origine", "longitude_origine", "cout_par_minute"):
+            if (base[c].dropna() % 1 == 0).all():
+                base[c] = base[c].astype("Int64")
+    chemin = os.path.join(BASE, "base.csv")
+    base.to_csv(chemin, index=False, encoding="utf-8")
 
     print("\n=== base/base.csv ecrite ===")
-    print(f"  lignes : {len(base):,}  |  colonnes : {base.shape[1]}")
+    print(f"  lignes : {len(base):,}  |  colonnes : {base.shape[1]}  |  taille : {os.path.getsize(chemin)/1e6:.0f} Mo")
     print(base.groupby("zone").agg(lignes=("annee", "size"), annee_min=("annee", "min"),
                                    annee_max=("annee", "max"), aeroports=("aeroport_origine", "nunique")))
-    manq = us[(us.latitude_origine.isna())].aeroport_origine.unique().tolist() + \
-           eu[eu.latitude_origine.isna()].aeroport_origine.unique().tolist()
+    manq = base[base.latitude_origine.isna()].aeroport_origine.unique().tolist()
     print(f"  aeroports sans coordonnees : {len(manq)} {manq[:20]}")
-
-    fichiers_kpi(base)
 
 
 if __name__ == "__main__":
