@@ -1,0 +1,12 @@
+# Donnees telechargees par code/construire_base.py (recreees en relancant le script)
+donnees_brutes/
+donnees_intermediaires/
+*.zip
+
+# Base finale : depasse la limite de 100 Mo par fichier de GitHub
+base/base.csv
+
+# Fichiers temporaires
+*.part
+__pycache__/
+.ipynb_checkpoints/

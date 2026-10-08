@@ -1,0 +1,585 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Retards des vols 2019-2025 — Présentation du projet</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="css/style.css">
+  <link rel="stylesheet" href="css/document.css">
+</head>
+<body class="doc">
+
+<header class="hero"><div class="inner">
+  <p class="eyebrow">Master Big Data · Bloc 1 · Visualisation de l'information</p>
+  <h1>Les retards des vols aux États-Unis et en Europe (2019‑2025)</h1>
+  <p class="lead">Où, quand et pourquoi les vols arrivent-ils en retard, combien ces retards coûtent-ils,
+    et pèsent-ils sur la satisfaction des passagers ? Un tableau de bord interactif construit avec D3.js
+    sur des données publiques et traçables.</p>
+  <p class="author">Projet réalisé par <strong>GBODOGBE Zinsou René</strong></p>
+  <a class="cta" href="index.html">Ouvrir le tableau de bord →</a>
+</div></header>
+
+<nav class="toc"><div class="inner">
+  <a href="#contexte">1 · Contexte</a>
+  <a href="#demarche">2 · Démarche</a>
+  <a href="#sources">3 · Sources</a>
+  <a href="#variables">4 · Variables</a>
+  <a href="#calculs">5 · Variables construites</a>
+  <a href="#kpis">6 · KPIs</a>
+  <a href="#d3">7 · Fonctions D3.js</a>
+  <a href="#limites">8 · Limites</a>
+  <a href="#references">Références</a>
+  <a href="index.html">Tableau de bord ↗</a>
+</div></nav>
+
+<main>
+
+<!-- ============================================================ 1. CONTEXTE -->
+<section class="card" id="contexte">
+  <header><div class="section-num">1</div><div>
+    <h2>Contexte et motivation</h2>
+    <p class="subtitle">Pourquoi étudier les retards aériens ?</p></div></header>
+
+  <p class="lead-text">Le retard est l'indicateur de qualité le plus visible du transport aérien. Il touche à la fois les
+    <strong>passagers</strong> (temps perdu, correspondances manquées), les <strong>compagnies</strong> (équipages, carburant,
+    indemnisations) et les <strong>gestionnaires du trafic</strong> (capacité des aéroports et de l'espace aérien).</p>
+
+  <div class="facts">
+    <div class="fact"><div class="v">17,5 min</div><div class="l">de retard moyen par vol en Europe en 2024 ; 72,4 % des vols à l'heure</div>
+      <div class="s">EUROCONTROL, CODA <sup class="ref"><a href="#ref1">[1]</a></sup></div></div>
+    <div class="fact"><div class="v">46 %</div><div class="l">des minutes de retard en Europe sont « réactionnaires » : un retard en entraîne un autre</div>
+      <div class="s">EUROCONTROL, CODA <sup class="ref"><a href="#ref1">[1]</a></sup></div></div>
+    <div class="fact"><div class="v">98,41 $</div><div class="l">coût moyen d'une minute de vol (block time) pour une compagnie américaine en 2025</div>
+      <div class="s">Airlines for America <sup class="ref"><a href="#ref2">[2]</a></sup></div></div>
+    <div class="fact"><div class="v">32,9 Md$</div><div class="l">coût total des retards aux États-Unis en 2007 (compagnies, passagers, économie)</div>
+      <div class="s">Ball et al., <em>Total Delay Impact Study</em> <sup class="ref"><a href="#ref3">[3]</a></sup></div></div>
+  </div>
+
+  <p>Ces ordres de grandeur montrent que le retard est un enjeu à la fois <strong>opérationnel</strong>, <strong>économique</strong>
+    et <strong>de satisfaction client</strong>. En Europe, le règlement (CE) n° 261/2004 oblige d'ailleurs les compagnies à indemniser
+    les passagers arrivés avec plus de trois heures de retard <sup class="ref"><a href="#ref10">[10]</a></sup>.
+    Les données publiques sur le sujet sont abondantes mais dispersées et peu lisibles sous forme de tableaux bruts :
+    la <strong>visualisation interactive</strong> permet de les explorer et de les comparer.</p>
+
+  <h3>Questions auxquelles le projet répond</h3>
+  <ol class="questions">
+    <li>Comment le retard d'un aéroport évolue-t-il dans le temps, et diffère-t-il selon la destination ?</li>
+    <li>Quelles sont les principales causes de retard, et changent-elles d'une année à l'autre ?</li>
+    <li>Quels aéroports concentrent le trafic et les retards ?</li>
+    <li>Combien les retards coûtent-ils aux compagnies ?</li>
+    <li>Les compagnies les plus ponctuelles ont-elles des passagers plus satisfaits ?</li>
+    <li>Le coût des retards est-il lié à la satisfaction des passagers ?</li>
+    <li>Comment le réseau des aéroports est-il structuré, et comment a-t-il réagi à la crise de 2020 ?</li>
+  </ol>
+</section>
+
+<!-- ============================================================ 2. DEMARCHE -->
+<section class="card" id="demarche">
+  <header><div class="section-num">2</div><div>
+    <h2>Démarche</h2>
+    <p class="subtitle">Des fichiers officiels au tableau de bord, sans aucune donnée simulée</p></div></header>
+
+  <figure class="fig">
+    <p class="fig-title"><span>Figure 1.</span> Chaîne de traitement des données</p>
+    <div class="pipeline">
+      <div class="step"><div class="k">Étape 1</div><div class="t">Collecte</div>
+        <ul><li>Téléchargement automatique depuis les sites officiels (BTS, EUROCONTROL, OurAirports)</li>
+            <li>Chaque fichier est tracé : URL, date, taille</li></ul></div>
+      <div class="step"><div class="k">Étape 2</div><div class="t">Préparation (Python)</div>
+        <ul><li><code>code/construire_base.py</code> (pandas)</li>
+            <li>Nettoyage, agrégation par mois, jointures (coordonnées, coût, satisfaction)</li></ul></div>
+      <div class="step"><div class="k">Étape 3</div><div class="t">Base unique</div>
+        <ul><li><code>base/base.csv</code></li>
+            <li>≈ 823 000 lignes, 43 variables</li>
+            <li>Des sommes, pas de moyennes</li></ul></div>
+      <div class="step"><div class="k">Étape 4</div><div class="t">Visualisation (D3.js)</div>
+        <ul><li>Lecture avec <code>d3.csv()</code></li>
+            <li>Calcul des 7 KPIs dans le navigateur</li>
+            <li>Graphiques, cartes, réseau, tableaux HTML</li></ul></div>
+    </div>
+    <p class="fig-source">Le script Python ne calcule aucun indicateur : il construit seulement la base. Tous les KPIs sont calculés en JavaScript avec D3.js <sup class="ref"><a href="#ref11">[11]</a></sup>.</p>
+  </figure>
+</section>
+
+<!-- ============================================================ 3. SOURCES -->
+<section class="card" id="sources">
+  <header><div class="section-num">3</div><div>
+    <h2>Sources des données</h2>
+    <p class="subtitle">Six sources publiques, toutes citées et téléchargeables</p></div></header>
+  <p>Aucune base mondiale gratuite ne donne les retards vol par vol pour tous les pays. Le projet combine donc les deux grandes
+    sources ouvertes : le ministère américain des Transports pour les <strong>États-Unis</strong> et EUROCONTROL pour l'<strong>Europe</strong>,
+    complétées par des données de référence.</p>
+
+  <div class="table-wrap"><table class="data doc-table">
+    <caption>Tableau 1. Sources utilisées pour construire la base</caption>
+    <thead><tr><th>Source</th><th>Producteur</th><th>Contenu utilisé</th><th>Niveau de détail</th><th>Période</th></tr></thead>
+    <tbody>
+      <tr><td><strong>On-Time Performance</strong> <sup class="ref"><a href="#ref4">[4]</a></sup></td><td>Bureau of Transportation Statistics (BTS), US DOT</td>
+        <td>Retards au départ et à l'arrivée, annulations, détournements, 5 causes de retard, compagnie, origine, destination</td><td>vol par vol (vols intérieurs des compagnies américaines)</td><td>2019-2025, 84 fichiers mensuels</td></tr>
+      <tr><td><strong>Tables de codes BTS</strong> <sup class="ref"><a href="#ref4">[4]</a></sup></td><td>BTS</td>
+        <td>Noms des compagnies (<code>L_UNIQUE_CARRIERS</code>)</td><td>une ligne par code</td><td>—</td></tr>
+      <tr><td><strong>Aviation Intelligence Portal</strong> <sup class="ref"><a href="#ref5">[5]</a></sup></td><td>EUROCONTROL</td>
+        <td>Trafic (départs, arrivées), retards ATFM à l'arrivée par cause, retards au départ toutes causes</td><td>aéroport et jour</td><td>2019-2025 (retard au départ : 2020-2025)</td></tr>
+      <tr><td><strong>OurAirports</strong> <sup class="ref"><a href="#ref6">[6]</a></sup></td><td>OurAirports (domaine public)</td>
+        <td>Latitude et longitude des aéroports</td><td>aéroport</td><td>—</td></tr>
+      <tr><td><strong>Coût d'une minute de retard</strong> <sup class="ref"><a href="#ref2">[2]</a></sup> <sup class="ref"><a href="#ref7">[7]</a></sup></td><td>Airlines for America ; EUROCONTROL</td>
+        <td>USA : coût d'une minute de vol pour les compagnies (2019, 2021-2025). Europe : 100 € par minute de retard ATFM</td><td>année</td><td>2019-2025 (pas de valeur USA pour 2020)</td></tr>
+      <tr><td><strong>ACSI Airlines</strong> <sup class="ref"><a href="#ref8">[8]</a></sup></td><td>American Customer Satisfaction Index</td>
+        <td>Score de satisfaction (0-100) de 9 compagnies américaines</td><td>compagnie et année</td><td>enquêtes 2020-2026</td></tr>
+    </tbody>
+  </table></div>
+  <div class="note">Les valeurs de coût et de satisfaction ont été <b>recopiées à l'identique</b> depuis les pages officielles
+    (et leurs versions archivées sur l'Internet Archive pour les années passées). L'URL de chaque valeur est conservée
+    dans <code>donnees_brutes/couts/</code> et <code>donnees_brutes/satisfaction/</code>.</div>
+</section>
+
+<!-- ============================================================ 4. VARIABLES -->
+<section class="card" id="variables">
+  <header><div class="section-num">4</div><div>
+    <h2>Dictionnaire des variables de la base</h2>
+    <p class="subtitle"><code>base/base.csv</code> — une ligne = un mois pour une compagnie et une liaison (USA) ou pour un aéroport (Europe)</p></div></header>
+  <p>Les variables USA sont vides pour les lignes européennes, et inversement. Les colonnes de volume et de minutes sont des
+    <strong>sommes</strong> sur le mois : c'est ce qui permet de recalculer des moyennes exactes après n'importe quel filtre.</p>
+  <div class="note"><b>Important :</b> ce tableau liste les <b>43 colonnes présentes dans <code>base.csv</code></b>.
+    Les variables affichées dans les visuels qui n'y figurent pas (par exemple la variable qualitative « cause du retard »,
+    le retard moyen, la part de vols en retard, le coût ou les corrélations) sont <b>construites dans D3.js</b> :
+    leur calcul est détaillé dans la <a href="#calculs">section 5</a>.</div>
+
+  <div class="table-wrap"><table class="data doc-table">
+    <caption>Tableau 2. Variables de <code>base.csv</code> (nom, type, source et mode de calcul)</caption>
+    <thead><tr><th>Variable</th><th>Type</th><th>Source</th><th>Description et calcul</th></tr></thead>
+    <tbody>
+      <tr class="group"><td colspan="4">Identification</td></tr>
+      <tr><td><code>zone</code></td><td><span class="type txt">texte</span></td><td><span class="src">dérivée</span></td><td>« USA » (BTS) ou « Europe » (EUROCONTROL)</td></tr>
+      <tr><td><code>pays</code></td><td><span class="type txt">texte</span></td><td><span class="src">EUROCONTROL</span></td><td>Pays de l'aéroport (<code>STATE_NAME</code>) ; « United States » pour les lignes BTS</td></tr>
+      <tr><td><code>annee</code>, <code>mois</code></td><td><span class="type int">entier</span></td><td><span class="src">BTS · EUROCONTROL</span></td><td>Période (<code>Year</code>, <code>Month</code> / <code>YEAR</code>, <code>MONTH_NUM</code>)</td></tr>
+      <tr><td><code>aeroport_origine</code></td><td><span class="type txt">texte</span></td><td><span class="src">BTS · EUROCONTROL</span></td><td>Code de l'aéroport de départ : IATA aux USA (<code>Origin</code>, ex. ATL), OACI en Europe (<code>APT_ICAO</code>, ex. LFPG)</td></tr>
+      <tr><td><code>nom_origine</code></td><td><span class="type txt">texte</span></td><td><span class="src">BTS · EUROCONTROL</span></td><td>Ville (<code>OriginCityName</code>) ou nom de l'aéroport (<code>APT_NAME</code>)</td></tr>
+      <tr><td><code>latitude_origine</code>, <code>longitude_origine</code></td><td><span class="type dec">décimal</span></td><td><span class="src">OurAirports</span></td><td>Coordonnées en degrés, jointure sur le code IATA ou OACI</td></tr>
+      <tr><td><code>aeroport_destination</code></td><td><span class="type txt">texte</span></td><td><span class="src">BTS</span></td><td>Code IATA de l'aéroport d'arrivée (<code>Dest</code>) ; vide en Europe</td></tr>
+      <tr><td><code>distance_km</code></td><td><span class="type int">entier</span></td><td><span class="src">BTS</span></td><td>Distance de la liaison : <code>Distance</code> (miles) × 1,609</td></tr>
+      <tr><td><code>compagnie_code</code>, <code>compagnie_nom</code></td><td><span class="type txt">texte</span></td><td><span class="src">BTS</span></td><td>Code (<code>Reporting_Airline</code>, ex. DL) et nom officiel de la compagnie</td></tr>
+
+      <tr class="group"><td colspan="4">Volumes et retards — USA (somme sur le mois des vols de la ligne)</td></tr>
+      <tr><td><code>nb_vols</code></td><td><span class="type int">entier</span></td><td><span class="src">BTS · EUROCONTROL</span></td><td>Nombre de vols programmés (USA) ; nombre de départs (Europe)</td></tr>
+      <tr><td><code>nb_annules</code>, <code>nb_detournes</code></td><td><span class="type int">entier</span></td><td><span class="src">BTS</span></td><td>Somme de <code>Cancelled</code> et de <code>Diverted</code></td></tr>
+      <tr><td><code>nb_vols_arrives</code>, <code>nb_vols_partis</code></td><td><span class="type int">entier</span></td><td><span class="src">BTS</span></td><td>Vols ayant un retard à l'arrivée (<code>ArrDelay</code>) ou au départ (<code>DepDelay</code>) renseigné</td></tr>
+      <tr><td><code>nb_retards_arrivee_15</code>, <code>nb_retards_depart_15</code></td><td><span class="type int">entier</span></td><td><span class="src">BTS</span></td><td>Vols arrivés / partis avec 15 min de retard ou plus (somme de <code>ArrDel15</code>, <code>DepDel15</code>)</td></tr>
+      <tr><td><code>somme_retard_arrivee_min</code>, <code>somme_retard_depart_min</code></td><td><span class="type int">entier</span></td><td><span class="src">BTS</span></td><td>Somme des écarts à l'horaire en minutes, avances comprises (négatives)</td></tr>
+      <tr><td><code>minutes_retard_arrivee_totales</code></td><td><span class="type int">entier</span></td><td><span class="src">BTS</span></td><td>Somme des minutes de retard à l'arrivée, avances comptées 0 (<code>ArrDelayMinutes</code>)</td></tr>
+      <tr><td><code>min_cause_compagnie</code></td><td><span class="type int">entier</span></td><td><span class="src">BTS</span></td><td>Minutes dues à la compagnie : équipage, maintenance, nettoyage, bagages… (<code>CarrierDelay</code>)</td></tr>
+      <tr><td><code>min_cause_meteo</code></td><td><span class="type int">entier</span></td><td><span class="src">BTS</span></td><td>Minutes dues à une météo extrême (<code>WeatherDelay</code>)</td></tr>
+      <tr><td><code>min_cause_systeme_aviation_nas</code></td><td><span class="type int">entier</span></td><td><span class="src">BTS</span></td><td>Minutes dues au système aérien national : contrôle, trafic, météo non extrême (<code>NASDelay</code>)</td></tr>
+      <tr><td><code>min_cause_surete</code></td><td><span class="type int">entier</span></td><td><span class="src">BTS</span></td><td>Minutes dues à la sûreté : évacuation, contrôle de sûreté (<code>SecurityDelay</code>)</td></tr>
+      <tr><td><code>min_cause_avion_precedent_retarde</code></td><td><span class="type int">entier</span></td><td><span class="src">BTS</span></td><td>Minutes dues à l'arrivée tardive de l'avion sur le vol précédent (<code>LateAircraftDelay</code>)</td></tr>
+
+      <tr class="group"><td colspan="4">Trafic et retards — Europe (somme des jours du mois)</td></tr>
+      <tr><td><code>nb_departs</code>, <code>nb_arrivees</code></td><td><span class="type int">entier</span></td><td><span class="src">EUROCONTROL</span></td><td>Départs et arrivées IFR (<code>FLT_DEP_1</code>, <code>FLT_ARR_1</code>, jeu « Airport Traffic »)</td></tr>
+      <tr><td><code>atfm_min_total</code></td><td><span class="type int">entier</span></td><td><span class="src">EUROCONTROL</span></td><td>Minutes de retard ATFM à l'arrivée (<code>DLY_APT_ARR_1</code>) : retard imposé au sol par la régulation du trafic</td></tr>
+      <tr><td><code>atfm_min_meteo</code></td><td><span class="type int">entier</span></td><td><span class="src">EUROCONTROL</span></td><td>Codes W (météo) + D (dégivrage)</td></tr>
+      <tr><td><code>atfm_min_capacite</code></td><td><span class="type int">entier</span></td><td><span class="src">EUROCONTROL</span></td><td>Codes C, G, M, R, V (capacité du contrôle, de l'aéroport, de l'espace aérien, environnement)</td></tr>
+      <tr><td><code>atfm_min_personnel_atc</code></td><td><span class="type int">entier</span></td><td><span class="src">EUROCONTROL</span></td><td>Code S (effectifs du contrôle aérien)</td></tr>
+      <tr><td><code>atfm_min_perturbations_greves</code></td><td><span class="type int">entier</span></td><td><span class="src">EUROCONTROL</span></td><td>Codes A, E, I, N, O, T, NA (incidents, équipements, grèves, autres)</td></tr>
+      <tr><td><code>atfm_min_evenements</code></td><td><span class="type int">entier</span></td><td><span class="src">EUROCONTROL</span></td><td>Code P (événements spéciaux)</td></tr>
+      <tr><td><code>atfm_nb_arrivees_retardees</code>, <code>…_15</code></td><td><span class="type int">entier</span></td><td><span class="src">EUROCONTROL</span></td><td>Arrivées ayant subi un retard ATFM, dont 15 min ou plus (<code>FLT_ARR_1_DLY</code>, <code>FLT_ARR_1_DLY_15</code>)</td></tr>
+      <tr><td><code>depart_min_retard_toutes_causes</code></td><td><span class="type int">entier</span></td><td><span class="src">EUROCONTROL</span></td><td>Minutes de retard au départ, toutes causes (<code>DLY_ALL_PRE_2</code>), à partir de 2020</td></tr>
+      <tr><td><code>nb_departs_avec_mesure_retard</code></td><td><span class="type int">entier</span></td><td><span class="src">EUROCONTROL</span></td><td>Départs pour lesquels ce retard est mesuré (<code>FLT_DEP_IFR_2</code>)</td></tr>
+
+      <tr class="group"><td colspan="4">Références (valeur de l'année ou de la compagnie)</td></tr>
+      <tr><td><code>cout_par_minute</code></td><td><span class="type dec">décimal</span></td><td><span class="src">A4A · EUROCONTROL</span></td><td>Coût d'une minute de retard : valeur A4A de l'année (USD) ou 100 € (Europe)</td></tr>
+      <tr><td><code>devise_cout</code></td><td><span class="type txt">texte</span></td><td><span class="src">dérivée</span></td><td>« USD » ou « EUR »</td></tr>
+      <tr><td><code>score_acsi_0_100</code></td><td><span class="type int">entier</span></td><td><span class="src">ACSI</span></td><td>Score de satisfaction de la compagnie ; l'enquête ACSI de l'année N+1 (avril N à mars N+1) est rattachée aux vols de l'année N</td></tr>
+      <tr><td><code>annee_acsi</code></td><td><span class="type int">entier</span></td><td><span class="src">ACSI</span></td><td>Année de publication de ce score</td></tr>
+    </tbody>
+  </table></div>
+</section>
+
+<!-- ============================================================ 5. CALCULS -->
+<section class="card" id="calculs">
+  <header><div class="section-num">5</div><div>
+    <h2>Variables construites et calculs</h2>
+    <p class="subtitle">Comment chaque variable des visuels est obtenue, même lorsqu'elle n'est pas une colonne de la base</p></div></header>
+
+  <p>Les données passent par <strong>trois niveaux</strong>. Seul le niveau 2 est stocké dans <code>base.csv</code> ;
+    toutes les variables du niveau 3 sont <strong>construites dans le navigateur avec D3.js</strong> à partir des colonnes de la base.</p>
+
+  <figure class="fig">
+    <p class="fig-title"><span>Figure 2.</span> Les trois niveaux de variables</p>
+    <div class="pipeline" style="grid-template-columns:repeat(3,1fr)">
+      <div class="step"><div class="k">Niveau 1</div><div class="t">Variables brutes des fichiers sources</div>
+        <ul><li>BTS : une ligne par vol (<code>ArrDelay</code>, <code>CarrierDelay</code>…)</li>
+            <li>EUROCONTROL : une ligne par aéroport et par jour (<code>DLY_APT_ARR_W_1</code>…)</li></ul></div>
+      <div class="step"><div class="k">Niveau 2</div><div class="t">Variables de <code>base.csv</code> (Python)</div>
+        <ul><li>Agrégation par mois : comptages et sommes</li>
+            <li>Regroupement des codes de cause européens</li>
+            <li>Jointures : coordonnées, coût, satisfaction</li></ul></div>
+      <div class="step"><div class="k">Niveau 3</div><div class="t">Variables construites (D3.js)</div>
+        <ul><li>Variable qualitative « cause du retard »</li>
+            <li>Moyennes, taux, coûts, corrélations</li>
+            <li>Liaisons et degré du réseau</li></ul></div>
+    </div>
+    <p class="fig-source">Le passage du niveau 1 au niveau 2 est fait par <code>code/construire_base.py</code> ; le passage du niveau 2 au niveau 3 par les fichiers <code>visualisations/js/kpi1.js</code> à <code>kpi7.js</code>.</p>
+  </figure>
+
+  <!-- ---------------------------------------------------------------- 5.1 -->
+  <h3>5.1 Du fichier brut à la base (Python)</h3>
+  <p><strong>USA (BTS).</strong> Chaque fichier mensuel contient une ligne par vol. Le script regroupe les vols qui ont la même
+    <em>année</em>, le même <em>mois</em>, la même <em>compagnie</em>, le même <em>aéroport de départ</em> et le même <em>aéroport d'arrivée</em>,
+    puis calcule pour chaque groupe :</p>
+  <div class="table-wrap"><table class="data doc-table">
+    <caption>Tableau 3. Agrégation des vols BTS en une ligne de la base</caption>
+    <thead><tr><th>Colonne de <code>base.csv</code></th><th>Opération sur les vols du groupe</th><th>Colonne brute BTS</th></tr></thead>
+    <tbody>
+      <tr><td><code>nb_vols</code></td><td>nombre de vols (lignes)</td><td>—</td></tr>
+      <tr><td><code>nb_annules</code> / <code>nb_detournes</code></td><td>somme des indicateurs 0/1</td><td><code>Cancelled</code> / <code>Diverted</code></td></tr>
+      <tr><td><code>nb_vols_arrives</code></td><td>nombre de vols dont le retard à l'arrivée est renseigné (vols ni annulés ni détournés)</td><td><code>ArrDelay</code></td></tr>
+      <tr><td><code>nb_vols_partis</code></td><td>nombre de vols dont le retard au départ est renseigné</td><td><code>DepDelay</code></td></tr>
+      <tr><td><code>nb_retards_arrivee_15</code></td><td>somme de l'indicateur « arrivé avec 15 min de retard ou plus » (0/1)</td><td><code>ArrDel15</code></td></tr>
+      <tr><td><code>nb_retards_depart_15</code></td><td>somme de l'indicateur « parti avec 15 min de retard ou plus » (0/1)</td><td><code>DepDel15</code></td></tr>
+      <tr><td><code>somme_retard_arrivee_min</code></td><td>somme des écarts à l'heure prévue (une avance est négative)</td><td><code>ArrDelay</code></td></tr>
+      <tr><td><code>somme_retard_depart_min</code></td><td>idem au départ</td><td><code>DepDelay</code></td></tr>
+      <tr><td><code>minutes_retard_arrivee_totales</code></td><td>somme des retards, les avances étant comptées 0</td><td><code>ArrDelayMinutes</code></td></tr>
+      <tr><td><code>min_cause_…</code> (5 colonnes)</td><td>somme des minutes déclarées pour chaque cause</td><td><code>CarrierDelay</code>, <code>WeatherDelay</code>, <code>NASDelay</code>, <code>SecurityDelay</code>, <code>LateAircraftDelay</code></td></tr>
+      <tr><td><code>distance_km</code></td><td>moyenne de la distance × 1,609 (miles → km)</td><td><code>Distance</code></td></tr>
+    </tbody>
+  </table></div>
+  <p><strong>Europe (EUROCONTROL).</strong> Les fichiers donnent une ligne par aéroport et par jour. Le script additionne les jours
+    de chaque mois pour chaque aéroport, et joint les trois jeux (trafic, retards ATFM, retards au départ) sur
+    <em>année + mois + code OACI de l'aéroport</em>. Les 16 codes de cause ATFM sont regroupés en 5 colonnes (voir 5.2).</p>
+  <p><strong>Jointures.</strong> Les coordonnées viennent d'OurAirports (jointure sur le code IATA aux USA, OACI en Europe) ;
+    <code>cout_par_minute</code> est la valeur publiée pour l'année de la ligne ; <code>score_acsi_0_100</code> est rattaché par
+    <em>code compagnie + année</em>.</p>
+
+  <!-- ---------------------------------------------------------------- 5.2 -->
+  <h3>5.2 La variable qualitative « cause du retard » (KPI 2)</h3>
+  <div class="note"><b>Cette variable n'est pas une colonne de <code>base.csv</code>.</b> La base contient <b>cinq colonnes numériques</b>,
+    une par cause, qui donnent un nombre de minutes. Le visuel les transforme en <b>une variable qualitative</b> « cause »
+    à 5 modalités, associée à une variable quantitative « minutes ». C'est un passage du format « large » au format « long ».</div>
+
+  <p><strong>D'où viennent les minutes par cause ?</strong> Aux USA, pour chaque vol arrivé avec <strong>15 minutes ou plus</strong> de retard,
+    la compagnie déclare au ministère des Transports comment se répartissent ces minutes entre cinq causes officielles <sup class="ref"><a href="#ref12">[12]</a></sup>.
+    Nous l'avons vérifié sur le fichier de janvier 2024 : les 126 410 vols arrivés avec 15 min ou plus de retard ont tous leurs 5 causes renseignées,
+    leur somme est exactement égale au retard du vol, et aucun vol de moins de 15 min n'a de cause.</p>
+
+  <div class="table-wrap"><table class="data doc-table">
+    <caption>Tableau 4. USA : modalités de la variable « cause » et colonnes utilisées</caption>
+    <thead><tr><th>Modalité affichée</th><th>Colonne de <code>base.csv</code></th><th>Colonne brute BTS</th><th>Définition officielle (BTS) <sup class="ref"><a href="#ref12">[12]</a></sup></th></tr></thead>
+    <tbody>
+      <tr><td><strong>Avion précédent en retard</strong></td><td><code>min_cause_avion_precedent_retarde</code></td><td><code>LateAircraftDelay</code></td><td>Le vol précédent du même avion est arrivé en retard, ce qui retarde le départ (retard « en cascade »).</td></tr>
+      <tr><td><strong>Compagnie aérienne</strong></td><td><code>min_cause_compagnie</code></td><td><code>CarrierDelay</code></td><td>Causes sous le contrôle de la compagnie : maintenance, équipage, nettoyage, chargement des bagages, avitaillement…</td></tr>
+      <tr><td><strong>Système aérien (NAS)</strong></td><td><code>min_cause_systeme_aviation_nas</code></td><td><code>NASDelay</code></td><td>Système national de l'aviation : météo non extrême, opérations aéroportuaires, trafic dense, contrôle aérien.</td></tr>
+      <tr><td><strong>Météo</strong></td><td><code>min_cause_meteo</code></td><td><code>WeatherDelay</code></td><td>Conditions météorologiques extrêmes : tornade, tempête de neige, ouragan…</td></tr>
+      <tr><td><strong>Sûreté</strong></td><td><code>min_cause_surete</code></td><td><code>SecurityDelay</code></td><td>Évacuation d'un terminal, ré-embarquement après une faille de sûreté, équipement de contrôle en panne, files d'attente de plus de 29 min.</td></tr>
+    </tbody>
+  </table></div>
+
+  <p><strong>Calcul dans D3.js</strong> (fichier <code>js/kpi2.js</code>), étape par étape :</p>
+  <ol>
+    <li>On garde les lignes de la base qui correspondent aux filtres choisis (zone, compagnie, aéroport).</li>
+    <li>Pour chaque année, on additionne chacune des 5 colonnes de minutes : on obtient 5 totaux.</li>
+    <li>On transforme ces 5 totaux en 5 lignes « (année, cause, minutes) » : c'est la variable qualitative <em>cause</em> (fonction <code>d3.stack()</code>).</li>
+    <li>Part d'une cause = minutes de la cause ÷ somme des minutes des 5 causes de l'année.</li>
+  </ol>
+
+  <div class="table-wrap"><table class="data doc-table">
+    <caption>Tableau 5. Exemple réel : toutes compagnies, USA, année 2024</caption>
+    <thead><tr><th>Cause (modalité)</th><th class="num">Minutes (somme de la colonne)</th><th class="num">Part = minutes ÷ total</th></tr></thead>
+    <tbody>
+      <tr><td>Avion précédent en retard</td><td class="num">41 973 684</td><td class="num">40,4 %</td></tr>
+      <tr><td>Compagnie aérienne</td><td class="num">35 823 263</td><td class="num">34,5 %</td></tr>
+      <tr><td>Système aérien (NAS)</td><td class="num">19 621 964</td><td class="num">18,9 %</td></tr>
+      <tr><td>Météo</td><td class="num">6 195 873</td><td class="num">6,0 %</td></tr>
+      <tr><td>Sûreté</td><td class="num">179 928</td><td class="num">0,2 %</td></tr>
+      <tr><td><strong>Total des 5 causes</strong></td><td class="num"><strong>103 794 712</strong></td><td class="num"><strong>100 %</strong></td></tr>
+    </tbody>
+  </table></div>
+  <p>Le total des causes est inférieur à <code>minutes_retard_arrivee_totales</code>, car les retards de moins de 15 minutes n'ont pas de cause déclarée.</p>
+
+  <p><strong>Europe.</strong> EUROCONTROL publie les minutes de retard ATFM (retard imposé au sol par la régulation du trafic aérien) selon
+    16 codes de cause <sup class="ref"><a href="#ref5">[5]</a></sup>. Pour obtenir 5 modalités lisibles, le script Python additionne ces codes en 5 groupes,
+    chacun stocké dans une colonne de la base. Le visuel applique ensuite la même transformation qu'aux USA.</p>
+  <div class="table-wrap"><table class="data doc-table">
+    <caption>Tableau 6. Europe : regroupement des codes de cause ATFM en 5 modalités</caption>
+    <thead><tr><th>Modalité affichée</th><th>Colonne de <code>base.csv</code></th><th>Codes EUROCONTROL additionnés (colonnes brutes <code>DLY_APT_ARR_X_1</code>)</th></tr></thead>
+    <tbody>
+      <tr><td><strong>Capacité</strong></td><td><code>atfm_min_capacite</code></td><td>C capacité du contrôle · G capacité de l'aéroport · M gestion de l'espace aérien · R routage ATC · V contraintes environnementales</td></tr>
+      <tr><td><strong>Personnel du contrôle aérien</strong></td><td><code>atfm_min_personnel_atc</code></td><td>S effectifs du contrôle aérien</td></tr>
+      <tr><td><strong>Météo</strong></td><td><code>atfm_min_meteo</code></td><td>W météo · D dégivrage</td></tr>
+      <tr><td><strong>Perturbations et grèves</strong></td><td><code>atfm_min_perturbations_greves</code></td><td>A accident/incident · E équipement (hors ATC) · I grève ATC · N grève (hors ATC) · O autre · T équipement ATC · NA non précisé</td></tr>
+      <tr><td><strong>Événements</strong></td><td><code>atfm_min_evenements</code></td><td>P événement spécial</td></tr>
+    </tbody>
+  </table></div>
+  <p>Les causes européennes ne couvrent que les retards ATFM : elles ne sont pas comparables aux causes américaines, qui couvrent tous les retards de 15 minutes ou plus.</p>
+
+  <!-- ---------------------------------------------------------------- 5.3 -->
+  <h3>5.3 Les autres variables construites</h3>
+  <p>Règle commune : on <strong>additionne d'abord</strong> les lignes sélectionnées, <strong>puis on divise</strong>. Une moyenne de moyennes serait fausse,
+    car elle donnerait le même poids à une liaison de 10 vols et à une liaison de 10 000 vols. Le symbole Σ signifie « somme sur les lignes sélectionnées ».</p>
+  <div class="table-wrap"><table class="data doc-table">
+    <caption>Tableau 7. Variables affichées dans les visuels mais absentes de <code>base.csv</code></caption>
+    <thead><tr><th>Variable construite</th><th>Type</th><th>Colonnes de la base utilisées</th><th>Calcul</th><th>KPI</th></tr></thead>
+    <tbody>
+      <tr class="group"><td colspan="5">Temps</td></tr>
+      <tr><td><strong>Mois (date)</strong></td><td><span class="type txt">date</span></td><td><code>annee</code>, <code>mois</code></td><td>Date du 1<sup>er</sup> jour du mois : <code>new Date(annee, mois − 1, 1)</code>, pour l'axe du temps</td><td>1, 7</td></tr>
+
+      <tr class="group"><td colspan="5">Retards (USA)</td></tr>
+      <tr><td><strong>Retard moyen à l'arrivée</strong></td><td><span class="type dec">quantitative</span></td><td><code>somme_retard_arrivee_min</code>, <code>nb_vols_arrives</code></td><td>Σ somme_retard_arrivee_min ÷ Σ nb_vols_arrives (avances comprises, donc la moyenne peut être négative)</td><td>1, 3, 5, 7</td></tr>
+      <tr><td><strong>Part des vols en retard (≥ 15 min)</strong></td><td><span class="type dec">quantitative (%)</span></td><td><code>nb_retards_arrivee_15</code>, <code>nb_vols_arrives</code></td><td>Σ nb_retards_arrivee_15 ÷ Σ nb_vols_arrives</td><td>1, 3, 5</td></tr>
+      <tr><td><strong>Taux d'annulation</strong></td><td><span class="type dec">quantitative (%)</span></td><td><code>nb_annules</code>, <code>nb_vols</code></td><td>Σ nb_annules ÷ Σ nb_vols</td><td>1, 3</td></tr>
+      <tr><td><strong>« Toutes destinations »</strong></td><td><span class="type txt">qualitative</span></td><td><code>aeroport_origine</code></td><td>Modalité créée pour le KPI 1 : toutes les lignes de l'aéroport de départ, sans filtrer sur <code>aeroport_destination</code></td><td>1</td></tr>
+
+      <tr class="group"><td colspan="5">Retards (Europe)</td></tr>
+      <tr><td><strong>Retard moyen au départ</strong></td><td><span class="type dec">quantitative</span></td><td><code>depart_min_retard_toutes_causes</code>, <code>nb_departs_avec_mesure_retard</code></td><td>Σ minutes ÷ Σ départs mesurés (à partir de 2020)</td><td>1, 3</td></tr>
+      <tr><td><strong>Retard ATFM par arrivée</strong></td><td><span class="type dec">quantitative</span></td><td><code>atfm_min_total</code>, <code>nb_arrivees</code></td><td>Σ atfm_min_total ÷ Σ nb_arrivees</td><td>1, 3</td></tr>
+
+      <tr class="group"><td colspan="5">Coûts</td></tr>
+      <tr><td><strong>Coût estimé du retard</strong></td><td><span class="type dec">quantitative (USD / EUR)</span></td><td>USA : <code>minutes_retard_arrivee_totales</code>, <code>cout_par_minute</code><br>Europe : <code>atfm_min_total</code>, <code>cout_par_minute</code></td><td>Pour chaque année : Σ minutes de retard × coût d'une minute de cette année. 2020 : non calculé aux USA (pas de valeur publiée)</td><td>4, 6</td></tr>
+      <tr><td><strong>Coût moyen par vol</strong></td><td><span class="type dec">quantitative</span></td><td>coût estimé, <code>nb_vols</code></td><td>Coût estimé ÷ Σ nb_vols</td><td>4, 6</td></tr>
+
+      <tr class="group"><td colspan="5">Satisfaction</td></tr>
+      <tr><td><strong>Point compagnie × année</strong></td><td><span class="type txt">observation</span></td><td><code>compagnie_code</code>, <code>annee</code>, <code>score_acsi_0_100</code> + colonnes de retard et de coût</td><td>Toutes les lignes d'une compagnie pour une année sont additionnées ; on garde les compagnies qui ont un score ACSI (9 compagnies)</td><td>5, 6</td></tr>
+      <tr><td><strong>Pearson r</strong></td><td><span class="type dec">quantitative (−1 à +1)</span></td><td>coût moyen par vol (x), <code>score_acsi_0_100</code> (y)</td><td>r = Σ(x − x̄)(y − ȳ) ÷ √[Σ(x − x̄)² · Σ(y − ȳ)²]</td><td>6</td></tr>
+      <tr><td><strong>Spearman ρ</strong></td><td><span class="type dec">quantitative (−1 à +1)</span></td><td>idem</td><td>On remplace x et y par leurs rangs (1 = plus petite valeur, ex aequo = rang moyen), puis on calcule Pearson sur ces rangs</td><td>6</td></tr>
+      <tr><td><strong>R² et droite de tendance</strong></td><td><span class="type dec">quantitative</span></td><td>idem</td><td>R² = r² ; droite des moindres carrés y = a + b·x avec b = Σ(x − x̄)(y − ȳ) ÷ Σ(x − x̄)² et a = ȳ − b·x̄</td><td>6</td></tr>
+
+      <tr class="group"><td colspan="5">Réseau des aéroports</td></tr>
+      <tr><td><strong>Liaison</strong></td><td><span class="type txt">qualitative</span></td><td><code>aeroport_origine</code>, <code>aeroport_destination</code></td><td>Paire d'aéroports sans sens : A → B et B → A deviennent la même liaison « A–B » (codes triés par ordre alphabétique)</td><td>7</td></tr>
+      <tr><td><strong>Vols de la liaison</strong></td><td><span class="type int">quantitative</span></td><td><code>nb_vols</code></td><td>Σ nb_vols des deux sens, toutes compagnies, pour le mois choisi</td><td>7</td></tr>
+      <tr><td><strong>Degré d'un aéroport</strong></td><td><span class="type int">quantitative</span></td><td>liaisons du mois</td><td>Nombre de liaisons différentes qui touchent l'aéroport dans le mois</td><td>7</td></tr>
+      <tr><td><strong>Vols d'un aéroport (taille du nœud)</strong></td><td><span class="type int">quantitative</span></td><td>vols des liaisons</td><td>Somme des vols de toutes ses liaisons = départs + arrivées</td><td>7</td></tr>
+
+      <tr class="group"><td colspan="5">Échelles de couleur</td></tr>
+      <tr><td><strong>Niveau de couleur</strong></td><td><span class="type txt">visuel</span></td><td>variable affichée</td><td>Dégradé bleu du 5<sup>e</sup> au 95<sup>e</sup> centile des valeurs à l'écran ; au-delà, couleur maximale (évite qu'un aéroport extrême écrase les autres). Gris = valeur non publiée</td><td>3, 7</td></tr>
+    </tbody>
+  </table></div>
+
+  <h3>Exemple complet : Atlanta (ATL), année 2024</h3>
+  <ol>
+    <li>On sélectionne dans <code>base.csv</code> toutes les lignes avec <code>aeroport_origine = ATL</code> et <code>annee = 2024</code> (toutes compagnies, toutes destinations, 12 mois).</li>
+    <li>On additionne : Σ <code>nb_vols</code> = 341 910 vols.</li>
+    <li>Retard moyen = Σ <code>somme_retard_arrivee_min</code> ÷ Σ <code>nb_vols_arrives</code> = <strong>6,8 min</strong>.</li>
+    <li>Part des vols en retard = Σ <code>nb_retards_arrivee_15</code> ÷ Σ <code>nb_vols_arrives</code> = <strong>19,9 %</strong>.</li>
+    <li>Taux d'annulation = Σ <code>nb_annules</code> ÷ Σ <code>nb_vols</code> = <strong>1,0 %</strong>.</li>
+  </ol>
+  <p class="fig-source">Ces valeurs sont celles affichées dans le tableau du KPI 1 du tableau de bord.</p>
+</section>
+
+<!-- ============================================================ 6. KPIS -->
+<section class="card" id="kpis">
+  <header><div class="section-num">6</div><div>
+    <h2>Les indicateurs clés (KPIs)</h2>
+    <p class="subtitle">Sept visualisations interactives, chacune répondant à une question</p></div></header>
+
+  <div class="kpi-grid">
+    <article class="kpi-card">
+      <div class="head"><div class="kpi-badge">1</div><h3>Évolution du retard moyen d'un aéroport vers ses destinations</h3></div>
+      <dl><dt>Question</dt><dd>Le retard d'un aéroport évolue-t-il dans le temps, et selon la destination ?</dd>
+          <dt>Mesure</dt><dd>Retard moyen à l'arrivée, part des vols ≥ 15 min, nombre de vols, par mois</dd>
+          <dt>Visuel</dt><dd>Courbes temporelles (<code>d3.line</code>) avec réticule et info-bulle</dd>
+          <dt>Filtres</dt><dd>Zone, aéroport de départ, jusqu'à 4 destinations</dd></dl>
+      <a class="go" href="index.html#kpi1">Voir la visualisation →</a></article>
+
+    <article class="kpi-card">
+      <div class="head"><div class="kpi-badge">2</div><h3>Répartition des causes de retard</h3></div>
+      <dl><dt>Question</dt><dd>Quelles causes expliquent les minutes de retard ?</dd>
+          <dt>Mesure</dt><dd>Part de chaque cause dans les minutes de retard, par année</dd>
+          <dt>Visuel</dt><dd>Barres empilées à 100 % (<code>d3.stack</code>)</dd>
+          <dt>Filtres</dt><dd>Zone, compagnie ou pays, aéroport ; parts ou minutes</dd></dl>
+      <a class="go" href="index.html#kpi2">Voir la visualisation →</a></article>
+
+    <article class="kpi-card">
+      <div class="head"><div class="kpi-badge">3</div><h3>Carte des aéroports : trafic et retards</h3></div>
+      <dl><dt>Question</dt><dd>Où se concentrent le trafic et les retards ?</dd>
+          <dt>Mesure</dt><dd>Nombre de vols (taille du cercle), niveau de retard (couleur)</dd>
+          <dt>Visuel</dt><dd>Carte à symboles proportionnels (<code>d3.geoAlbersUsa</code>, <code>d3.geoConicConformal</code>)</dd>
+          <dt>Filtres</dt><dd>USA, Europe ou les deux ; année ; mois ; indicateur de couleur</dd></dl>
+      <a class="go" href="index.html#kpi3">Voir la visualisation →</a></article>
+
+    <article class="kpi-card">
+      <div class="head"><div class="kpi-badge">4</div><h3>Coût estimé des retards</h3></div>
+      <dl><dt>Question</dt><dd>Combien les retards coûtent-ils aux compagnies ?</dd>
+          <dt>Mesure</dt><dd>Coût total, coût moyen par vol, évolution annuelle</dd>
+          <dt>Visuel</dt><dd>Barres horizontales triées et barres annuelles</dd>
+          <dt>Filtres</dt><dd>USA (par compagnie) ou Europe (par pays) ; année</dd></dl>
+      <a class="go" href="index.html#kpi4">Voir la visualisation →</a></article>
+
+    <article class="kpi-card">
+      <div class="head"><div class="kpi-badge">5</div><h3>Satisfaction des passagers et retard moyen</h3></div>
+      <dl><dt>Question</dt><dd>Les compagnies ponctuelles ont-elles des passagers plus satisfaits ?</dd>
+          <dt>Mesure</dt><dd>Score ACSI face au retard moyen ou à la part de vols en retard</dd>
+          <dt>Visuel</dt><dd>Nuage de points animé par année (<code>transition</code>)</dd>
+          <dt>Filtres</dt><dd>Année (curseur, animation), axe horizontal</dd></dl>
+      <a class="go" href="index.html#kpi5">Voir la visualisation →</a></article>
+
+    <article class="kpi-card">
+      <div class="head"><div class="kpi-badge">6</div><h3>Corrélation coût du retard × satisfaction</h3></div>
+      <dl><dt>Question</dt><dd>Le coût des retards est-il lié à la satisfaction ?</dd>
+          <dt>Mesure</dt><dd>Pearson r, Spearman ρ, R², droite de tendance</dd>
+          <dt>Visuel</dt><dd>Nuage de points avec droite de régression et tableau des coefficients</dd>
+          <dt>Filtres</dt><dd>Période ; suivi d'une compagnie dans le temps</dd></dl>
+      <a class="go" href="index.html#kpi6">Voir la visualisation →</a></article>
+
+    <article class="kpi-card">
+      <div class="head"><div class="kpi-badge">7</div><h3>Réseau dynamique des connexions entre aéroports</h3></div>
+      <dl><dt>Question</dt><dd>Comment le réseau est-il structuré et comment évolue-t-il ?</dd>
+          <dt>Mesure</dt><dd>Liaisons actives, vols par liaison, degré des aéroports, retard moyen</dd>
+          <dt>Visuel</dt><dd>Graphe sur carte ou graphe de forces (<code>d3.forceSimulation</code>), animé mois par mois</dd>
+          <dt>Filtres</dt><dd>Mois, seuil de vols, disposition ; clic sur un aéroport</dd></dl>
+      <a class="go" href="index.html#kpi7">Voir la visualisation →</a></article>
+  </div>
+</section>
+
+<!-- ============================================================ 7. LIMITES -->
+<section class="card" id="d3">
+  <header><div class="section-num">7</div><div>
+    <h2>Fonctions D3.js utilisées</h2>
+    <p class="subtitle">Les fonctions de la bibliothèque D3.js (version 7) employées pour chaque visuel</p></div></header>
+  <p>Toutes les visualisations reposent sur le même principe de D3.js : on <strong>associe des données à des éléments SVG</strong>
+    (cercles, rectangles, chemins) avec <code>selection.data()</code> et <code>selection.join()</code>, puis on calcule leur position, leur taille
+    et leur couleur avec des <strong>échelles</strong> (<code>d3.scale…</code>). Les noms des fonctions suivent la documentation officielle <sup class="ref"><a href="#ref11">[11]</a></sup>.</p>
+
+  <h3>7.1 Fonctions communes à tous les visuels</h3>
+  <div class="table-wrap"><table class="data doc-table">
+    <caption>Tableau 8. Chargement des données, calculs et interactions (fichiers <code>js/commun.js</code> et <code>index.html</code>)</caption>
+    <thead><tr><th>Étape</th><th>Fonction D3.js</th><th>Rôle dans le projet</th></tr></thead>
+    <tbody>
+      <tr class="group"><td colspan="3">Chargement</td></tr>
+      <tr><td>Lire la base</td><td><code>d3.csv(url, fonction)</code></td><td>Lit <code>base/base.csv</code> ligne par ligne ; la fonction de conversion ne garde que les colonnes utiles et transforme le texte en nombres</td></tr>
+      <tr><td>Lire les fonds de carte</td><td><code>d3.json()</code> + <code>topojson.feature()</code></td><td>Charge les contours des pays (world-atlas) et des États américains (us-atlas) et les convertit en GeoJSON</td></tr>
+      <tr class="group"><td colspan="3">Préparation et calculs</td></tr>
+      <tr><td>Regrouper</td><td><code>d3.group()</code></td><td>Index de la base par aéroport de départ et par mois, pour filtrer rapidement</td></tr>
+      <tr><td>Agréger</td><td><code>d3.rollup()</code>, <code>d3.rollups()</code></td><td>Somme des lignes par groupe (par mois, année, compagnie, pays, cause…)</td></tr>
+      <tr><td>Statistiques</td><td><code>d3.sum()</code>, <code>d3.mean()</code>, <code>d3.min()</code>, <code>d3.max()</code>, <code>d3.extent()</code>, <code>d3.quantile()</code></td><td>Totaux, moyennes, minimum/maximum (domaines des axes), centiles 5 % et 95 % (échelles de couleur)</td></tr>
+      <tr><td>Rechercher</td><td><code>d3.greatest()</code>, <code>d3.least()</code>, <code>d3.bisectCenter()</code></td><td>Mois le plus et le moins retardé (phrase de synthèse du KPI 1) ; mois le plus proche de la souris</td></tr>
+      <tr><td>Mettre en forme</td><td><code>d3.formatLocale()</code>, <code>d3.timeFormat()</code></td><td>Nombres au format français (1 234,5 ; 19,9 %) et années sur les axes</td></tr>
+      <tr class="group"><td colspan="3">Affichage et interactions</td></tr>
+      <tr><td>Sélectionner, lier les données</td><td><code>d3.select()</code>, <code>selection.selectAll()</code>, <code>.data()</code>, <code>.join()</code>, <code>.attr()</code>, <code>.text()</code>, <code>.html()</code></td><td>Crée les éléments SVG du graphique et les lignes des tableaux HTML à partir des données</td></tr>
+      <tr><td>Réagir aux actions</td><td><code>selection.on("mousemove" | "mouseleave" | "click" | "change" | "input")</code>, <code>d3.pointer()</code></td><td>Info-bulles au survol, filtres (listes, boutons, curseurs), clic sur un aéroport</td></tr>
+    </tbody>
+  </table></div>
+
+  <h3>7.2 Fonctions spécifiques à chaque visuel</h3>
+  <div class="table-wrap"><table class="data doc-table">
+    <caption>Tableau 9. Fonctions D3.js utilisées pour construire chaque visuel</caption>
+    <thead><tr><th>Visuel</th><th>Fonction D3.js</th><th>Rôle dans le visuel</th></tr></thead>
+    <tbody>
+      <tr class="group"><td colspan="3">KPI 1 · Figure 1 — Courbes de retard mensuel (<code>js/kpi1.js</code>)</td></tr>
+      <tr><td rowspan="5">Graphique en lignes</td><td><code>d3.scaleTime()</code></td><td>Axe horizontal : convertit chaque mois (date) en position</td></tr>
+      <tr><td><code>d3.scaleLinear()</code></td><td>Axe vertical : retard moyen (min), part des vols en retard ou nombre de vols</td></tr>
+      <tr><td><code>d3.axisBottom()</code>, <code>d3.axisLeft()</code>, <code>d3.timeYear.every(1)</code></td><td>Dessine les axes, une graduation par année, et la grille horizontale</td></tr>
+      <tr><td><code>d3.line()</code> avec <code>.defined()</code></td><td>Trace une courbe par liaison ; <code>.defined()</code> coupe la courbe quand une valeur manque</td></tr>
+      <tr><td><code>d3.pointer()</code>, <code>d3.bisectCenter()</code></td><td>Réticule vertical : trouve le mois sous la souris et affiche les valeurs de toutes les courbes</td></tr>
+
+      <tr class="group"><td colspan="3">KPI 2 · Figure 2 — Barres empilées des causes (<code>js/kpi2.js</code>)</td></tr>
+      <tr><td rowspan="4">Barres empilées à 100 %</td><td><code>d3.rollups()</code></td><td>Somme des 5 colonnes de minutes par année</td></tr>
+      <tr><td><code>d3.stack().keys([…])</code></td><td>Transforme les 5 colonnes en 5 couches empilées : c'est l'étape qui crée la variable qualitative « cause » (une couche = une modalité)</td></tr>
+      <tr><td><code>d3.scaleBand()</code></td><td>Axe horizontal : une barre par année, avec espacement</td></tr>
+      <tr><td><code>d3.scaleLinear()</code>, <code>d3.axisLeft()</code></td><td>Axe vertical de 0 à 100 % (ou en minutes)</td></tr>
+
+      <tr class="group"><td colspan="3">KPI 3 · Figure 3 — Carte des aéroports (<code>js/kpi3.js</code>)</td></tr>
+      <tr><td rowspan="6">Carte à symboles proportionnels</td><td><code>d3.geoAlbersUsa()</code></td><td>Projection des USA (l'Alaska et Hawaï sont placés en encart)</td></tr>
+      <tr><td><code>d3.geoConicConformal()</code></td><td>Projection conique adaptée à l'Europe</td></tr>
+      <tr><td><code>d3.geoNaturalEarth1()</code></td><td>Projection du monde pour la vue « USA + Europe »</td></tr>
+      <tr><td><code>d3.geoPath()</code>, <code>projection.fitSize()</code> / <code>.fitExtent()</code></td><td>Dessine les pays ou États et cadre automatiquement la carte</td></tr>
+      <tr><td><code>d3.scaleSqrt()</code></td><td>Rayon du cercle proportionnel à la racine du nombre de vols (la surface est alors proportionnelle aux vols)</td></tr>
+      <tr><td><code>d3.scaleSequential()</code> + <code>d3.interpolateRgbBasis()</code></td><td>Couleur du cercle : dégradé bleu selon le niveau de retard (légende en dégradé SVG <code>linearGradient</code>)</td></tr>
+
+      <tr class="group"><td colspan="3">KPI 4 · Figures 4a et 4b — Coût des retards (<code>js/kpi4.js</code>)</td></tr>
+      <tr><td rowspan="3">Barres horizontales et barres annuelles</td><td><code>d3.rollups()</code>, <code>d3.sum()</code></td><td>Minutes et coût par compagnie (USA) ou par pays (Europe), pour chaque année</td></tr>
+      <tr><td><code>d3.scaleLinear()</code></td><td>Longueur des barres horizontales (coût) et hauteur des barres annuelles</td></tr>
+      <tr><td><code>d3.scaleBand()</code>, <code>d3.axisBottom()</code></td><td>Une barre par année (Figure 4b) ; l'année choisie est mise en valeur</td></tr>
+
+      <tr class="group"><td colspan="3">KPI 5 · Figure 5 — Satisfaction et retard (<code>js/kpi5.js</code>)</td></tr>
+      <tr><td rowspan="4">Nuage de points animé</td><td><code>d3.rollup()</code></td><td>Somme des lignes par compagnie et par année</td></tr>
+      <tr><td><code>d3.scaleLinear()</code>, <code>d3.extent()</code></td><td>Axe x : retard moyen ou part de vols en retard ; axe y : score ACSI</td></tr>
+      <tr><td><code>d3.scaleSqrt()</code></td><td>Taille du point selon le nombre de vols de la compagnie</td></tr>
+      <tr><td><code>selection.transition().duration()</code></td><td>Animation : les points glissent d'une année à l'autre (bouton « Animer »)</td></tr>
+
+      <tr class="group"><td colspan="3">KPI 6 · Figure 6 — Corrélation coût × satisfaction (<code>js/kpi6.js</code>)</td></tr>
+      <tr><td rowspan="4">Nuage de points et droite de tendance</td><td><code>d3.mean()</code>, <code>d3.sum()</code></td><td>Moyennes x̄ et ȳ et sommes nécessaires à Pearson r, Spearman ρ et à la droite des moindres carrés</td></tr>
+      <tr><td><code>d3.scaleLinear()</code>, <code>d3.extent()</code></td><td>Axe x : coût moyen par vol ; axe y : score ACSI</td></tr>
+      <tr><td><code>d3.line()</code> + <code>selection.datum()</code></td><td>Trajectoire d'une compagnie suivie d'année en année</td></tr>
+      <tr><td>élément SVG <code>line</code> placé avec les échelles</td><td>Droite de tendance y = a + b·x</td></tr>
+
+      <tr class="group"><td colspan="3">KPI 7 · Figure 7 — Réseau des aéroports (<code>js/kpi7.js</code>)</td></tr>
+      <tr><td rowspan="7">Graphe (carte ou forces)</td><td><code>d3.geoAlbersUsa()</code>, <code>d3.geoPath()</code></td><td>Vue « Carte » : place chaque aéroport à sa vraie position</td></tr>
+      <tr><td><code>d3.forceSimulation()</code></td><td>Vue « Graphe de forces » : calcule la position des nœuds par simulation physique</td></tr>
+      <tr><td><code>d3.forceLink()</code>, <code>d3.forceManyBody()</code></td><td>Les liaisons rapprochent les aéroports reliés ; une force de répulsion écarte les autres</td></tr>
+      <tr><td><code>d3.forceCollide()</code>, <code>d3.forceCenter()</code>, <code>d3.forceX()</code>, <code>d3.forceY()</code></td><td>Empêche les nœuds de se chevaucher et garde le graphe centré</td></tr>
+      <tr><td><code>d3.drag()</code></td><td>Permet de déplacer un aéroport à la souris</td></tr>
+      <tr><td><code>d3.scaleSqrt()</code>, <code>d3.scaleLinear()</code></td><td>Taille des nœuds (vols) et épaisseur des liens (vols de la liaison)</td></tr>
+      <tr><td><code>d3.scaleSequential()</code>, <code>d3.quantile()</code></td><td>Couleur des liens selon le retard moyen (centiles 5 %–95 %)</td></tr>
+    </tbody>
+  </table></div>
+  <p class="fig-source">Documentation des fonctions : <a href="https://d3js.org/api">d3js.org/api</a>.</p>
+</section>
+
+<!-- ============================================================ 8. LIMITES -->
+<section class="card" id="limites">
+  <header><div class="section-num">8</div><div>
+    <h2>Limites</h2>
+    <p class="subtitle">Ce que les données permettent, et ne permettent pas, de conclure</p></div></header>
+  <ul>
+    <li><strong>Couverture</strong> : USA et Europe uniquement ; il n'existe pas de base mondiale ouverte des retards vol par vol.</li>
+    <li><strong>USA</strong> : le BTS ne couvre que les vols intérieurs des compagnies américaines déclarantes ; pas de retard des vols internationaux.</li>
+    <li><strong>Europe</strong> : pas de détail par liaison ni par compagnie ; les causes publiées ne concernent que les retards ATFM.
+      Les mesures européennes et américaines ne sont donc pas directement comparables.</li>
+    <li><strong>Coûts</strong> : estimations (minutes réelles × coût moyen publié), pas des coûts comptables ; aucune valeur USA publiée pour 2020.</li>
+    <li><strong>Satisfaction</strong> : 9 compagnies américaines seulement (≈ 50 points pour la corrélation) ; une corrélation n'établit pas de lien de cause à effet.</li>
+  </ul>
+</section>
+
+<!-- ============================================================ REFERENCES -->
+<section class="card" id="references">
+  <header><div class="section-num">✦</div><div>
+    <h2>Références</h2>
+    <p class="subtitle">Sources des données et des chiffres cités (consultées en octobre 2026)</p></div></header>
+  <ol class="refs">
+    <li id="ref1">EUROCONTROL (2025). <em>All-Causes Delays to Air Transport in Europe — Annual 2024</em> (CODA Digest).
+      <a href="https://www.eurocontrol.int/publication/all-causes-delays-air-transport-europe-annual-2024">eurocontrol.int/publication/all-causes-delays-air-transport-europe-annual-2024</a></li>
+    <li id="ref2">Airlines for America. <em>U.S. Passenger Carrier Delay Costs</em>.
+      <a href="https://www.airlines.org/dataset/u-s-passenger-carrier-delay-costs/">airlines.org/dataset/u-s-passenger-carrier-delay-costs</a>
+      (valeurs 2019-2024 : versions archivées de la même page sur <a href="https://web.archive.org/web/2024*/https://www.airlines.org/dataset/u-s-passenger-carrier-delay-costs/">web.archive.org</a>).</li>
+    <li id="ref3">Ball, M., Barnhart, C., Dresner, M., Hansen, M., Neels, K., Odoni, A., Peterson, E., Sherry, L., Trani, A., Zou, B. (2010).
+      <em>Total Delay Impact Study: A Comprehensive Assessment of the Costs and Impacts of Flight Delay in the United States</em>. NEXTOR.
+      <a href="https://rosap.ntl.bts.gov/view/dot/6234">rosap.ntl.bts.gov/view/dot/6234</a></li>
+    <li id="ref4">Bureau of Transportation Statistics, US DOT. <em>Reporting Carrier On-Time Performance (1987-present)</em>.
+      <a href="https://www.transtats.bts.gov/Fields.asp?gnoyr_VQ=FGJ">transtats.bts.gov/Fields.asp?gnoyr_VQ=FGJ</a> ;
+      fichiers mensuels : <code>transtats.bts.gov/PREZIP/On_Time_Reporting_Carrier_On_Time_Performance_1987_present_AAAA_M.zip</code></li>
+    <li id="ref5">EUROCONTROL. <em>Aviation Intelligence Portal — Data</em> (Airport Traffic, Airport Arrival ATFM Delay, All Pre-Departure Delay).
+      <a href="https://ansperformance.eu/data/">ansperformance.eu/data</a> ; définitions :
+      <a href="https://ansperformance.eu/reference/dataset/airport-arrival-atfm-delay/">ansperformance.eu/reference/dataset/airport-arrival-atfm-delay</a></li>
+    <li id="ref6">OurAirports. <em>Open data downloads</em>. <a href="https://ourairports.com/data/">ourairports.com/data</a></li>
+    <li id="ref7">EUROCONTROL. <em>Standard Inputs for Economic Analyses</em>, chapitre « Cost of delay ».
+      <a href="https://ansperformance.eu/economics/cba/standard-inputs/chapters/cost_of_delay.html">ansperformance.eu/economics/cba/standard-inputs/chapters/cost_of_delay.html</a></li>
+    <li id="ref8">American Customer Satisfaction Index. <em>Airlines</em>.
+      <a href="https://theacsi.org/industries/travel/airlines/">theacsi.org/industries/travel/airlines</a> (années passées : versions archivées sur web.archive.org).</li>
+    <li id="ref9">Bostock, M. <em>world-atlas</em> et <em>us-atlas</em> (fonds de carte TopoJSON, Natural Earth et US Census Bureau).
+      <a href="https://github.com/topojson/world-atlas">github.com/topojson/world-atlas</a>, <a href="https://github.com/topojson/us-atlas">github.com/topojson/us-atlas</a></li>
+    <li id="ref10">Règlement (CE) n° 261/2004 du Parlement européen et du Conseil du 11 février 2004 (droits des passagers aériens).
+      <a href="https://eur-lex.europa.eu/legal-content/FR/TXT/?uri=CELEX:32004R0261">eur-lex.europa.eu</a></li>
+    <li id="ref11">Bostock, M., Ogievetsky, V., Heer, J. (2011). D³: Data-Driven Documents. <em>IEEE Transactions on Visualization and Computer Graphics</em>, 17(12). Bibliothèque :
+      <a href="https://d3js.org/">d3js.org</a></li>
+    <li id="ref12">Bureau of Transportation Statistics. <em>Understanding the Reporting of Causes of Flight Delays and Cancellations</em>.
+      <a href="https://www.bts.gov/topics/airlines-and-airports/understanding-reporting-causes-flight-delays-and-cancellations">bts.gov/topics/airlines-and-airports/understanding-reporting-causes-flight-delays-and-cancellations</a></li>
+  </ol>
+</section>
+
+</main>
+
+<footer><p>Projet « Visualisation de l'information » — base construite par <code>code/construire_base.py</code>, visualisations dans
+  <a href="index.html">le tableau de bord D3.js</a>. Détail des fichiers téléchargés : <code>SOURCES.md</code> et <code>donnees_brutes/journal_telechargements.csv</code>.</p></footer>
+
+<script>
+  // lien actif dans le menu
+  const liens = document.querySelectorAll("nav.toc a");
+  window.addEventListener("scroll", () => {
+    let actif = null;
+    document.querySelectorAll("main section").forEach(s => { if (s.getBoundingClientRect().top < 120) actif = s.id; });
+    liens.forEach(a => a.classList.toggle("active", a.getAttribute("href") === "#" + actif));
+  });
+</script>
+</body>
+</html>
