@@ -78,7 +78,15 @@ function lireLigne(d) {
 
 async function chargerBase() {
   const t0 = performance.now();
-  await d3.csv(APP.CHEMIN_BASE, lireLigne);
+    // lit base.csv.gz (version compressée, celle de GitHub) ; sinon base.csv
+  try {
+    const r = await fetch(APP.CHEMIN_BASE + ".gz");
+    if (!r.ok) throw new Error(r.status);
+    const texte = await new Response(r.body.pipeThrough(new DecompressionStream("gzip"))).text();
+    d3.csvParse(texte, lireLigne);
+  } catch (e) {
+    await d3.csv(APP.CHEMIN_BASE, lireLigne);
+  }
   // index utiles
   APP.usParOrigine = d3.group(APP.us, r => r.o);
   APP.usParMois = d3.group(APP.us, r => r.an * 100 + r.mo);

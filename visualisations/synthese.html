@@ -441,6 +441,17 @@ footer ul { padding-left: 18px; }
    1. PARAMÈTRES
    ===================================================================== */
 const CHEMIN_BASE = "../base/base.csv";
+// Lit base.csv.gz (version compressée, celle de GitHub) ; sinon base.csv
+async function chargerBase(chemin, ligne) {
+  try {
+    const r = await fetch(chemin + ".gz");
+    if (!r.ok) throw new Error(r.status);
+    const texte = await new Response(r.body.pipeThrough(new DecompressionStream("gzip"))).text();
+    return d3.csvParse(texte, ligne);
+  } catch (e) {
+    return d3.csv(chemin, ligne);
+  }
+}
 const URL_MONDE = "https://cdn.jsdelivr.net/npm/world-atlas@2.0.2/countries-50m.json";
 const URL_USA   = "https://cdn.jsdelivr.net/npm/us-atlas@3.0.1/states-10m.json";
 const ANNEES = [2019, 2020, 2021, 2022, 2023, 2024, 2025];
@@ -1595,7 +1606,7 @@ d3.select("#f-reset").on("click", () => { F.region = ""; F.aero = ""; F.cie = ""
 (async function demarrer() {
   try {
     const t0 = performance.now();
-    await d3.csv(CHEMIN_BASE, lireLigne);
+        await chargerBase(CHEMIN_BASE, lireLigne);
     D.routes = new Map([..._routes].map(([k, m]) => [k, [...m.values()]]));
     D.mois = [...D.routes.keys()].sort((a, b) => a - b);
     _usIdx.clear(); _euIdx.clear(); _routes.clear();
