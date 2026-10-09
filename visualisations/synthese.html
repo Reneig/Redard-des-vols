@@ -1,0 +1,1625 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Retards des vols — Synthèse</title>
+<!--
+  Synthèse en 5 KPI des retards des vols (USA et Europe, 2019-2025).
+  Lit la base ../base/base.csv avec D3.js : ouvrir via un petit serveur local
+  (dans le dossier du projet : python3 -m http.server 8000
+   puis http://localhost:8000/visualisations/synthese.html).
+-->
+<script src="https://cdn.jsdelivr.net/npm/d3@7.9.0/dist/d3.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/topojson-client@3.1.0/dist/topojson-client.min.js"></script>
+<style>
+:root {
+  color-scheme: light;
+  --page: #f9f9f7;
+  --surface: #fcfcfb;
+  --surface-2: #f0efec;
+  --ink: #0b0b0b;
+  --ink-2: #52514e;
+  --muted: #898781;
+  --grid: #e1e0d9;
+  --axis: #c3c2b7;
+  --border: rgba(11,11,11,0.10);
+  --accent: #2a78d6;
+  --s1: #2a78d6; --s2: #eb6834; --s3: #1baf7a; --s4: #eda100; --s5: #e87ba4;
+  --seq-1: #b7d3f6; --seq-2: #86b6ef; --seq-3: #3987e5; --seq-4: #1c5cab; --seq-5: #0d366b;
+  --up: #b5341f; --down: #006300;
+  --note-bg: #fff6e0; --note-ink: #6b4a00;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    color-scheme: dark;
+    --page: #0d0d0d; --surface: #1a1a19; --surface-2: #262624;
+    --ink: #ffffff; --ink-2: #c3c2b7; --muted: #898781;
+    --grid: #2c2c2a; --axis: #383835; --border: rgba(255,255,255,0.10);
+    --accent: #3987e5;
+    --s1: #3987e5; --s2: #d95926; --s3: #199e70; --s4: #c98500; --s5: #d55181;
+    --seq-1: #184f95; --seq-2: #256abf; --seq-3: #3987e5; --seq-4: #86b6ef; --seq-5: #cde2fb;
+    --up: #ec835a; --down: #0ca30c;
+    --note-bg: #2e2612; --note-ink: #f3d48a;
+  }
+}
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --page: #0d0d0d; --surface: #1a1a19; --surface-2: #262624;
+  --ink: #ffffff; --ink-2: #c3c2b7; --muted: #898781;
+  --grid: #2c2c2a; --axis: #383835; --border: rgba(255,255,255,0.10);
+  --accent: #3987e5;
+  --s1: #3987e5; --s2: #d95926; --s3: #199e70; --s4: #c98500; --s5: #d55181;
+  --seq-1: #184f95; --seq-2: #256abf; --seq-3: #3987e5; --seq-4: #86b6ef; --seq-5: #cde2fb;
+  --up: #ec835a; --down: #0ca30c;
+  --note-bg: #2e2612; --note-ink: #f3d48a;
+}
+
+* { box-sizing: border-box; }
+body {
+  margin: 0; background: var(--page); color: var(--ink);
+  font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+  font-size: 16px; line-height: 1.5;
+}
+.wrap { max-width: 1080px; margin: 0 auto; padding: 0 16px; }
+h1 { font-size: clamp(26px, 4vw, 38px); line-height: 1.15; margin: 0 0 8px; letter-spacing: -0.01em; }
+h2 { font-size: 22px; line-height: 1.25; margin: 0; }
+p { margin: 0; }
+b, strong { font-weight: 650; }
+
+/* en-tête */
+.top { padding: 40px 0 24px; }
+.eyebrow { color: var(--ink-2); font-size: 13px; text-transform: uppercase; letter-spacing: .08em; margin-bottom: 8px; }
+.lead { color: var(--ink-2); max-width: 720px; }
+
+/* barre collante : choix de la zone + menu */
+.bar {
+  position: sticky; top: 0; z-index: 20;
+  background: color-mix(in srgb, var(--page) 92%, transparent);
+  backdrop-filter: blur(6px); border-bottom: 1px solid var(--border);
+}
+.bar .wrap { display: flex; gap: 16px; align-items: center; flex-wrap: wrap; padding-top: 10px; padding-bottom: 10px; }
+.bar nav { display: flex; gap: 4px; flex-wrap: wrap; }
+.bar nav a {
+  color: var(--ink-2); text-decoration: none; font-size: 14px;
+  padding: 4px 10px; border-radius: 999px;
+}
+.bar nav a:hover { background: var(--surface-2); color: var(--ink); }
+
+input[type=range] { width: 220px; accent-color: var(--accent); vertical-align: middle; }
+.ctl { display: flex; flex-direction: column; gap: 4px; }
+.ctl .lab { font-size: 13px; color: var(--ink-2); }
+.ctl .lab b { color: var(--ink); }
+.zone-tag { display: inline-block; font-size: 11px; font-weight: 700; padding: 1px 7px; border-radius: 999px; background: var(--surface-2); color: var(--ink-2); margin-left: 6px; vertical-align: 2px; }
+td.sel, th.sel { background: color-mix(in srgb, var(--accent) 10%, transparent); }
+
+.info-btn { margin-left: auto; flex: none; border: 1px solid var(--border); background: var(--surface-2); color: var(--ink);
+  border-radius: 999px; padding: 6px 14px; font: inherit; font-size: 14px; font-weight: 600; cursor: pointer; white-space: nowrap; }
+.btns { margin-left: auto; display: flex; gap: 8px; flex-wrap: wrap; justify-content: flex-end; flex: none; }
+.btns .info-btn { margin-left: 0; }
+.calc-btn { background: color-mix(in srgb, var(--accent) 14%, var(--surface)); border-color: color-mix(in srgb, var(--accent) 45%, transparent); }
+.colchip { display: inline-block; font-size: 12px; padding: 3px 8px; margin: 3px 4px 3px 0; border-radius: 6px; background: var(--surface-2); border: 1px solid var(--border); }
+ol.steps { margin: 0; padding-left: 0; list-style: none; counter-reset: st; }
+ol.steps li { counter-increment: st; position: relative; padding: 6px 0 6px 38px; font-size: 15px; }
+ol.steps li::before { content: counter(st); position: absolute; left: 0; top: 4px; width: 26px; height: 26px; border-radius: 50%; background: var(--accent); color: #fff; display: grid; place-items: center; font-weight: 700; font-size: 13px; }
+.formules { display: grid; gap: 8px; }
+.formules > div { display: grid; grid-template-columns: minmax(160px, 240px) 1fr; gap: 12px; align-items: center; background: var(--surface-2); border-left: 4px solid var(--accent); border-radius: 8px; padding: 10px 12px; }
+.formules span { font-weight: 650; font-size: 14px; }
+.formules code { font-size: 14px; color: var(--ink); white-space: normal; }
+@media (max-width: 600px) { .formules > div { grid-template-columns: 1fr; } }
+table.mt td, table.mt th { white-space: nowrap; }
+table.mt tr.ref td { background: color-mix(in srgb, var(--accent) 12%, transparent); }
+.info-btn:hover { background: var(--surface); box-shadow: 0 1px 3px rgba(0,0,0,.15); }
+.modal { position: fixed; inset: 0; z-index: 200; background: rgba(0,0,0,.5); display: grid; place-items: center; padding: 16px; }
+.modal[hidden] { display: none; }
+.modal-box td, .modal-box th { white-space: normal; vertical-align: top; }
+.modal-box { background: var(--surface); color: var(--ink); border: 1px solid var(--border); border-radius: 16px; width: min(1000px, 100%);
+  max-height: 88vh; overflow: auto; padding: 22px 24px; box-shadow: 0 20px 60px rgba(0,0,0,.35); }
+.modal-box header { display: flex; align-items: center; gap: 12px; margin-bottom: 10px; }
+.modal-box h3 { margin: 0; font-size: 20px; }
+.modal-box h4 { margin: 22px 0 8px; font-size: 16px; padding-left: 10px; border-left: 4px solid var(--accent); }
+.chip { display: inline-block; font-size: 12px; font-weight: 650; padding: 2px 8px; margin: 2px 4px 2px 0; border-radius: 999px;
+  background: color-mix(in srgb, var(--c) 18%, transparent); color: var(--ink); border: 1px solid color-mix(in srgb, var(--c) 55%, transparent); white-space: nowrap; }
+table.mack { border-collapse: separate; border-spacing: 4px; width: 100%; font-size: 14px; }
+table.mack th { background: var(--c); color: #fff; font-size: 15px; padding: 8px 10px; border-radius: 8px; border: 0; }
+table.mack td { background: var(--surface-2); border: 0; border-radius: 8px; padding: 7px 10px; color: var(--muted); white-space: normal; }
+table.mack td.on { background: color-mix(in srgb, var(--c) 22%, var(--surface)); color: var(--ink); font-weight: 650; box-shadow: inset 0 0 0 2px var(--c); }
+table.mack .rk { display: inline-grid; place-items: center; width: 20px; height: 20px; border-radius: 50%; font-size: 11px; background: var(--surface); color: var(--ink-2); margin-right: 4px; }
+table.mack td.on .rk { background: var(--c); color: #fff; }
+table.enc td { white-space: normal; } table.enc td.n { white-space: nowrap; }
+.rang { font-weight: 800; font-size: 15px; color: var(--c); }
+.cards3 { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 10px; margin-top: 8px; }
+.cards3 > div { border-radius: 12px; padding: 12px 14px; background: color-mix(in srgb, var(--c) 12%, var(--surface)); border-top: 4px solid var(--c); font-size: 15px; }
+.cards3 > div span { display: block; font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: .05em; color: var(--ink-2); margin-bottom: 4px; }
+.cards3.small > div { font-size: 14px; }
+.box { background: color-mix(in srgb, var(--c, var(--accent)) 10%, var(--surface)); border-radius: 10px; padding: 10px 14px; }
+.swatches { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 8px; }
+.sw { display: flex; gap: 10px; align-items: flex-start; background: var(--surface-2); border-radius: 10px; padding: 8px 10px; }
+.sw i { flex: none; width: 38px; height: 38px; border-radius: 8px; box-shadow: inset 0 0 0 1px var(--border); }
+.sw b { display: block; font-size: 14px; } .sw small { color: var(--ink-2); font-size: 12px; } .sw p { font-size: 13px !important; margin: 4px 0 0 !important; }
+ul.non { margin: 0; padding-left: 18px; } ul.non li { margin: 4px 0; font-size: 15px; }
+table.mk { border-collapse: separate; border-spacing: 3px; width: 100%; font-size: 13px; }
+table.mk th { font-size: 12px; font-weight: 650; color: var(--ink-2); padding: 6px 4px; text-align: center; border: 0; white-space: normal; vertical-align: bottom; }
+table.mk td { border: 0; padding: 7px 6px; text-align: center; border-radius: 6px; white-space: nowrap; }
+table.mk .l { text-align: left; }
+table.mk td.l { white-space: normal; min-width: 120px; }
+table.mk td.q { color: var(--ink-2); font-size: 12px; min-width: 110px; }
+.cell { background: color-mix(in srgb, var(--c) var(--a), var(--surface-2)); color: var(--ink-2); font-variant-numeric: tabular-nums; min-width: 34px; }
+.cell.on { background: var(--c); color: #fff; font-weight: 800; box-shadow: 0 1px 4px rgba(0,0,0,.25); }
+.cell.demo { display: inline-block; padding: 2px 8px; border-radius: 6px; font-size: 12px; min-width: 0; }
+.ty { display: inline-block; font-size: 12px; font-weight: 700; padding: 2px 9px; border-radius: 999px; color: #fff; background: var(--c); }
+.mk-sub { color: var(--ink-2); font-size: 15px; }
+.mk-sub b { color: var(--ink); }
+.mk-leg { font-size: 12px !important; color: var(--ink-2); display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.sw2-grid { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 6px; }
+.sw2 { display: flex; gap: 8px; align-items: center; background: var(--surface-2); border-radius: 10px; padding: 6px 10px 6px 6px; }
+.sw2 i { width: 28px; height: 28px; border-radius: 7px; box-shadow: inset 0 0 0 1px var(--border); flex: none; }
+.sw2 b { display: block; font-size: 13px; } .sw2 small { font-size: 11px; color: var(--ink-2); font-variant-numeric: tabular-nums; }
+.mk-foot { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 8px; margin-top: 18px; }
+.mk-foot > div { background: var(--surface-2); border-radius: 10px; padding: 10px 12px; font-size: 13px; }
+.mk-foot span { display: block; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .05em; color: var(--ink-2); margin-bottom: 2px; }
+.modal-box p { margin: 6px 0; font-size: 15px; }
+.modal-close { margin-left: auto; border: 0; background: var(--surface-2); color: var(--ink); border-radius: 999px; width: 34px; height: 34px; font-size: 18px; cursor: pointer; }
+.tile .d.ref { color: var(--ink-2); font-weight: 500; }
+@media (max-width: 600px) { .info-btn { font-size: 13px; padding: 5px 10px; } .kpi-head { flex-wrap: wrap; } }
+
+/* équipe */
+.team { margin-top: 18px; }
+.team-lab { display: block; font-size: 12px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: var(--ink-2); margin-bottom: 8px; }
+.team ul { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 8px; }
+.team li { display: flex; align-items: center; gap: 9px; padding: 6px 14px 6px 6px; border-radius: 999px; background: var(--surface); border: 1px solid var(--border); font-size: 15px; }
+.team .av { width: 30px; height: 30px; border-radius: 50%; display: grid; place-items: center; color: #fff; font-weight: 800; font-size: 12px; flex: none; }
+.team b { font-weight: 800; }
+
+/* filtres */
+.filters { display: flex; flex-wrap: wrap; gap: 8px 16px; align-items: center; padding-bottom: 10px !important; padding-top: 0 !important; }
+.filters label { font-size: 13px; color: var(--ink-2); margin-right: 6px; }
+.filters select { max-width: 260px; }
+.filters select:disabled { opacity: .45; }
+.btn-reset { border: 1px solid var(--border); background: var(--surface); color: var(--ink-2); border-radius: 8px; padding: 6px 12px; font: inherit; font-size: 14px; cursor: pointer; }
+.btn-reset:hover { color: var(--ink); }
+.scope { font-size: 14px; color: var(--ink-2); }
+.scope b { color: var(--ink); }
+.chart.map svg { overflow: hidden; border-radius: 12px; }
+.empty { padding: 48px 0; text-align: center; color: var(--muted); }
+.hint { font-size: 13px; color: var(--muted); }
+
+/* boutons segmentés */
+.seg { display: inline-flex; background: var(--surface-2); border-radius: 10px; padding: 3px; }
+.seg button {
+  border: 0; background: transparent; color: var(--ink-2); font: inherit; font-size: 15px;
+  padding: 6px 14px; border-radius: 8px; cursor: pointer;
+}
+.seg button.on { background: var(--surface); color: var(--ink); font-weight: 650; box-shadow: 0 1px 2px rgba(0,0,0,.12); }
+.seg.big button { font-size: 16px; padding: 7px 18px; }
+select {
+  font: inherit; font-size: 15px; color: var(--ink); background: var(--surface);
+  border: 1px solid var(--border); border-radius: 8px; padding: 6px 10px;
+}
+.controls { display: flex; flex-wrap: wrap; gap: 12px 20px; align-items: center; margin: 18px 0 8px; }
+.controls label { color: var(--ink-2); font-size: 14px; margin-right: 6px; }
+
+/* tuiles chiffres clés */
+.tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px; margin-top: 20px; }
+.tile { background: var(--surface); border: 1px solid var(--border); border-radius: 14px; padding: 16px 18px; }
+.tile .v { font-size: 30px; font-weight: 700; line-height: 1.1; }
+.tile .l { color: var(--ink-2); font-size: 14px; margin-top: 4px; }
+.tile .d { font-size: 14px; margin-top: 8px; font-weight: 600; }
+.d.up { color: var(--up); } .d.down { color: var(--down); }
+
+/* cartes KPI */
+section.kpi {
+  background: var(--surface); border: 1px solid var(--border); border-radius: 18px;
+  padding: 24px; margin: 24px 0; scroll-margin-top: 70px;
+}
+.kpi-head { display: flex; gap: 14px; align-items: flex-start; }
+.num {
+  flex: none; width: 40px; height: 40px; border-radius: 12px; background: var(--accent); color: #fff;
+  display: grid; place-items: center; font-weight: 700; font-size: 18px;
+}
+.kpi-head .sub { color: var(--ink-2); font-size: 15px; margin-top: 2px; }
+.badge {
+  display: inline-block; font-size: 12px; font-weight: 650; padding: 2px 8px; border-radius: 999px;
+  background: var(--surface-2); color: var(--ink-2); margin-left: 8px; vertical-align: middle;
+}
+.retenir {
+  margin-top: 18px; padding: 14px 16px; border-radius: 12px; background: var(--surface-2);
+  border-left: 4px solid var(--accent); font-size: 16px;
+}
+.retenir .t { font-size: 12px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--ink-2); display: block; margin-bottom: 2px; }
+.chart { position: relative; width: 100%; margin-top: 8px; }
+.chart svg { display: block; width: 100%; height: auto; overflow: visible; }
+.lire { color: var(--ink-2); font-size: 14px; margin-top: 10px; }
+.source { color: var(--muted); font-size: 13px; margin-top: 6px; }
+.note { margin-top: 12px; padding: 10px 14px; border-radius: 10px; background: var(--note-bg); color: var(--note-ink); font-size: 14px; }
+
+.legend { display: flex; flex-wrap: wrap; gap: 6px 16px; margin: 8px 0 4px; font-size: 14px; color: var(--ink-2); }
+.legend span { display: inline-flex; align-items: center; gap: 6px; }
+.legend i { width: 12px; height: 12px; border-radius: 3px; display: inline-block; }
+.legend i.line { height: 3px; border-radius: 2px; width: 18px; }
+
+/* graphiques SVG */
+.axis text, .tick text { fill: var(--muted); font-size: 12px; font-family: inherit; }
+.axis path, .axis line { stroke: var(--axis); }
+.grid line { stroke: var(--grid); }
+.grid path { display: none; }
+.lbl { fill: var(--ink); font-size: 13px; font-weight: 600; }
+.lbl-2 { fill: var(--ink-2); font-size: 12px; }
+.lbl-m { fill: var(--muted); font-size: 12px; }
+
+/* carte + classement */
+.map-grid { display: grid; grid-template-columns: minmax(0, 1.7fr) minmax(240px, 1fr); gap: 24px; align-items: start; }
+@media (max-width: 760px) { .map-grid { grid-template-columns: 1fr; } }
+.rank h3 { font-size: 15px; margin: 4px 0 8px; }
+.rank ol { list-style: none; margin: 0 0 18px; padding: 0; }
+.rank li { display: grid; grid-template-columns: 1fr auto; gap: 2px 8px; font-size: 14px; margin-bottom: 8px; }
+.rank .bar-bg { grid-column: 1 / -1; height: 6px; border-radius: 3px; background: var(--surface-2); overflow: hidden; }
+.rank .bar-fg { height: 100%; border-radius: 3px; }
+.rank .val { font-variant-numeric: tabular-nums; font-weight: 600; }
+
+/* tableaux */
+details { margin-top: 14px; }
+summary { cursor: pointer; color: var(--accent); font-size: 14px; font-weight: 600; }
+.table-wrap { overflow-x: auto; margin-top: 10px; }
+table { border-collapse: collapse; width: 100%; font-size: 14px; }
+th, td { padding: 7px 10px; border-bottom: 1px solid var(--grid); text-align: left; white-space: nowrap; }
+th { color: var(--ink-2); font-weight: 600; }
+td.n, th.n { text-align: right; font-variant-numeric: tabular-nums; }
+tr.tot td { font-weight: 700; }
+
+/* info-bulle */
+.tip {
+  position: fixed; pointer-events: none; z-index: 50; opacity: 0; transition: opacity .1s;
+  background: var(--surface); color: var(--ink); border: 1px solid var(--border);
+  box-shadow: 0 6px 20px rgba(0,0,0,.18); border-radius: 10px; padding: 10px 12px; font-size: 13px; min-width: 160px;
+}
+.tip .h { font-weight: 700; margin-bottom: 4px; }
+.tip .r { display: flex; justify-content: space-between; gap: 14px; }
+.tip .r span:last-child { font-weight: 600; font-variant-numeric: tabular-nums; }
+.tip i { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 6px; }
+
+/* chargement */
+#loading { position: fixed; inset: 0; background: color-mix(in srgb, var(--page) 85%, transparent); display: grid; place-items: center; z-index: 100; }
+#loading .box { background: var(--surface); border: 1px solid var(--border); border-radius: 16px; padding: 24px 28px; max-width: 460px; text-align: center; }
+.spin { width: 32px; height: 32px; border-radius: 50%; border: 3px solid var(--surface-2); border-top-color: var(--accent); margin: 0 auto 12px; animation: s 1s linear infinite; }
+@keyframes s { to { transform: rotate(360deg); } }
+
+footer { padding: 8px 0 48px; color: var(--ink-2); font-size: 14px; }
+footer h2 { color: var(--ink); margin: 8px 0 12px; }
+footer h3 { color: var(--ink); font-size: 16px; margin: 20px 0 6px; }
+footer a { color: var(--accent); }
+footer ul { padding-left: 18px; }
+</style>
+</head>
+<body>
+
+<div id="loading"><div class="box">
+  <div class="spin"></div>
+  <strong>Chargement de la base…</strong>
+  <p id="loading-msg" style="color:var(--ink-2);font-size:14px;margin-top:6px">
+    Lecture de <code>base/base.csv</code> (environ 800 000 lignes). Quelques secondes.</p>
+</div></div>
+
+<header class="top"><div class="wrap">
+  <p class="eyebrow">Master Big Data · Visualisation de l'information</p>
+  <h1>Les retards des vols aux États-Unis et en Europe, 2019‑2025</h1>
+  <p class="lead">Cinq questions, cinq indicateurs : <b>les retards augmentent-ils ? pourquoi ? où ? combien coûtent-ils ? comment le réseau aérien évolue-t-il ?</b>
+  Tous les montants sont en <b>euros de chaque année</b> (taux de change et inflation pris en compte).</p>
+  <div class="team">
+    <span class="team-lab">Projet réalisé par</span>
+    <ul>
+      <li><span class="av" style="background:var(--s1)">ZG</span><span><b>GBODOGBE</b> Zinsou René</span></li>
+      <li><span class="av" style="background:var(--s2)">JS</span><span><b>SUMAN</b> Jaskaran</span></li>
+      <li><span class="av" style="background:var(--s3)">AT</span><span><b>TAGHBALOUT</b> Abdallah</span></li>
+      <li><span class="av" style="background:var(--s4)">AK</span><span><b>KALAMI</b> Akram</span></li>
+      <li><span class="av" style="background:var(--s5)">AE</span><span><b>TIEMTORE</b> Ariel Eddy</span></li>
+    </ul>
+  </div>
+  <div class="tiles" id="hero"></div>
+  <p style="margin-top:14px;font-size:14px"><a href="presentation.html" style="color:var(--accent);font-weight:600">Présentation du projet : construction de la base, calculs, sources →</a></p>
+</div></header>
+
+<div class="bar">
+  <div class="wrap">
+    <div class="seg big" id="zone" role="group" aria-label="Zone"></div>
+    <nav>
+      <a href="#kpi1">1 · Évolution</a>
+      <a href="#kpi2">2 · Causes</a>
+      <a href="#kpi3">3 · Aéroports</a>
+      <a href="#kpi4">4 · Coût</a>
+      <a href="#kpi5">5 · Réseau</a>
+    </nav>
+  </div>
+  <div class="wrap filters">
+    <span><label for="f-region" id="f-region-lab">Pays</label><select id="f-region"></select></span>
+    <span><label for="f-aero">Aéroport</label><select id="f-aero"></select></span>
+    <span id="f-cie-wrap"><label for="f-cie">Compagnie</label><select id="f-cie"></select></span>
+    <button class="btn-reset" id="f-reset" type="button">Tout réinitialiser</button>
+    <span class="scope" id="scope"></span>
+  </div>
+</div>
+
+<main class="wrap">
+
+<!-- KPI 1 -->
+<section class="kpi" id="kpi1">
+  <div class="kpi-head"><div class="num">1</div><div>
+    <h2>Les retards augmentent-ils ?</h2>
+    <p class="sub" id="k1-sub"></p></div>
+    <div class="btns"><button class="info-btn calc-btn" type="button" data-calc="kpi1" aria-haspopup="dialog">∑ Méthode de calcul</button><button class="info-btn" type="button" data-info="kpi1" aria-haspopup="dialog">▦ Tableau visuel</button></div></div>
+  <div class="controls"><div class="seg" id="k1-vue"></div></div>
+  <div class="chart" id="k1-chart"></div>
+  <p class="lire" id="k1-lire"></p>
+  <p class="source" id="k1-source"></p>
+</section>
+
+<!-- KPI 2 -->
+<section class="kpi" id="kpi2">
+  <div class="kpi-head"><div class="num">2</div><div>
+    <h2>Pourquoi les vols sont-ils en retard ?</h2>
+    <p class="sub" id="k2-sub"></p></div>
+    <div class="btns"><button class="info-btn calc-btn" type="button" data-calc="kpi2" aria-haspopup="dialog">∑ Méthode de calcul</button><button class="info-btn" type="button" data-info="kpi2" aria-haspopup="dialog">▦ Tableau visuel</button></div></div>
+  <div class="controls"><div class="seg" id="k2-mode"></div></div>
+  <div class="legend" id="k2-legend"></div>
+  <div class="chart" id="k2-chart"></div>
+  <p class="lire" id="k2-lire"></p>
+  <p class="source" id="k2-source"></p>
+</section>
+
+<!-- KPI 3 -->
+<section class="kpi" id="kpi3">
+  <div class="kpi-head"><div class="num">3</div><div>
+    <h2>Où sont les retards ?</h2>
+    <p class="sub" id="k3-sub"></p></div>
+    <div class="btns"><button class="info-btn calc-btn" type="button" data-calc="kpi3" aria-haspopup="dialog">∑ Méthode de calcul</button><button class="info-btn" type="button" data-info="kpi3" aria-haspopup="dialog">▦ Tableau visuel</button></div></div>
+  <div class="controls"><span><label for="k3-annee">Année</label><select id="k3-annee"></select></span></div>
+  <div class="map-grid">
+    <div>
+      <div class="legend" id="k3-legend"></div>
+      <div class="chart map" id="k3-chart"></div>
+      <p class="lire">Taille du cercle = nombre de vols · couleur = niveau de retard (<span id="k3-sens">plus foncé</span> = plus de retard).
+        <b>Survolez</b> un cercle pour le détail, <b>cliquez</b> dessus pour filtrer toute la page sur cet aéroport.</p>
+    </div>
+    <div class="rank" id="k3-rank"></div>
+  </div>
+  <p class="source" id="k3-source"></p>
+</section>
+
+<!-- KPI 4 -->
+<section class="kpi" id="kpi4">
+  <div class="kpi-head"><div class="num">4</div><div>
+    <h2>Combien coûtent les retards ?</h2>
+    <p class="sub">Coût = minutes de retard × prix d'une minute de retard (en euros de chaque année)</p></div>
+    <div class="btns"><button class="info-btn calc-btn" type="button" data-calc="kpi4" aria-haspopup="dialog">∑ Méthode de calcul</button><button class="info-btn" type="button" data-info="kpi4" aria-haspopup="dialog">▦ Tableau visuel</button></div></div>
+  <div class="controls"><span><label for="k4-annee">Comparer 2019 avec</label><select id="k4-annee"></select></span></div>
+  <div class="tiles" id="k4-tiles" style="margin-top:8px"></div>
+  <h3 style="font-size:16px;margin:24px 0 0">Évolution depuis 2019 (indice : 2019 = 100)</h3>
+  <div class="legend" id="k4-legend"></div>
+  <div class="chart" id="k4-chart"></div>
+  <p class="lire">Les trois courbes partent de 100 en 2019. Si la courbe <b>coût</b> monte plus vite que la courbe <b>minutes</b>,
+    c'est que chaque minute de retard coûte plus cher (inflation, hausse des coûts des compagnies).</p>
+  <details><summary>Voir le détail du calcul du coût, année par année</summary><div class="table-wrap" id="k4-table"></div></details>
+  <p class="source" id="k4-source"></p>
+</section>
+
+<!-- KPI 5 -->
+<section class="kpi" id="kpi5">
+  <div class="kpi-head"><div class="num">5</div><div>
+    <h2>Comment le réseau aérien évolue-t-il ? <span class="badge">USA uniquement</span></h2>
+    <p class="sub">Réseau dynamique des liaisons directes entre aéroports, mois par mois</p></div>
+    <div class="btns"><button class="info-btn calc-btn" type="button" data-calc="kpi5" aria-haspopup="dialog">∑ Méthode de calcul</button><button class="info-btn" type="button" data-info="kpi5" aria-haspopup="dialog">▦ Tableau visuel</button></div></div>
+  <div class="controls" style="align-items:flex-end">
+    <div class="ctl"><span class="lab">Mois : <b id="k5-mois-val"></b></span><input type="range" id="k5-mois" step="1"></div>
+    <button class="btn-reset" id="k5-play" type="button">▶ Animer</button>
+    <div class="ctl"><span class="lab">Liaisons d'au moins <b id="k5-seuil-val"></b> vols / mois</span><input type="range" id="k5-seuil" min="50" max="1500" step="50"></div>
+    <div class="ctl"><span class="lab">Disposition</span><div class="seg" id="k5-vue"></div></div>
+  </div>
+  <div class="tiles" id="k5-tiles" style="margin-top:8px"></div>
+  <p class="lire" style="margin-top:16px;color:var(--ink)">Couleur des liaisons : retard moyen à l'arrivée</p>
+  <div class="legend" id="k5-legend"></div>
+  <p class="lbl" style="margin:12px 0 0;font-size:15px;font-weight:650" id="k5-fig"></p>
+  <div class="chart map" id="k5-chart"></div>
+  <p class="lire">Chaque <b>point</b> est un aéroport (taille = vols au départ et à l'arrivée) ; chaque <b>trait</b> est une liaison directe
+    (épaisseur = nombre de vols dans les deux sens, couleur = retard moyen). Faites défiler les mois ou cliquez sur <b>Animer</b> pour voir
+    le réseau se contracter en 2020 puis se reconstruire. <b>Cliquez sur un aéroport</b> pour isoler ses liaisons : le filtre s'applique aussi au reste de la page.
+    Avec un filtre État, ses liaisons sont mises en avant.</p>
+  <p class="source">Source : BTS, Reporting Carrier On-Time Performance (toutes compagnies) ; fond de carte us-atlas.</p>
+</section>
+
+</main>
+
+
+
+<div class="tip" id="tip"></div>
+<div class="modal" id="modal" hidden><div class="modal-box" role="dialog" aria-modal="true" aria-labelledby="modal-title">
+  <header><h3 id="modal-title"></h3><button class="modal-close" id="modal-close" type="button" aria-label="Fermer">✕</button></header>
+  <div id="modal-body"></div>
+</div></div>
+
+<script>
+/* =====================================================================
+   1. PARAMÈTRES
+   ===================================================================== */
+const CHEMIN_BASE = "../base/base.csv";
+const URL_MONDE = "https://cdn.jsdelivr.net/npm/world-atlas@2.0.2/countries-50m.json";
+const URL_USA   = "https://cdn.jsdelivr.net/npm/us-atlas@3.0.1/states-10m.json";
+const ANNEES = [2019, 2020, 2021, 2022, 2023, 2024, 2025];
+
+// Taux de change moyen annuel BCE : 1 € = x $
+const TAUX_USD_PAR_EUR = { 2019: 1.1195, 2020: 1.1422, 2021: 1.1827, 2022: 1.0530, 2023: 1.0813, 2024: 1.0824, 2025: 1.1300 };
+// Inflation annuelle moyenne de la zone euro (HICP, Eurostat), en %
+// 2026 : moyenne janvier-septembre 2026 (1,7 ; 1,9 ; 2,6 ; 3,0 ; 3,2 ; 2,8 ; 2,9 ; 3,2 ; 3,8 estimation rapide) — provisoire
+const INFLATION_ZONE_EURO = { 2019: 1.2, 2020: 0.3, 2021: 2.6, 2022: 8.4, 2023: 5.4, 2024: 2.4, 2025: 2.1, 2026: 2.8 };
+// Europe : coût d'une minute de retard de référence = 100 €, valeur prise pour l'année de référence ci-dessous
+const COUT_MINUTE_EU_REF = 100;
+const ANNEE_REF_EU = 2026;   // changer ici (ex. 2022) si la référence de 100 € correspond à une autre année
+
+// Indice des prix, base ANNEE_REF_EU = 1 : prix d'une année = 100 € × INDICE_PRIX[année]
+const INDICE_PRIX = { [ANNEE_REF_EU]: 1 };
+for (let a = ANNEE_REF_EU + 1; a <= 2026; a++) INDICE_PRIX[a] = INDICE_PRIX[a - 1] * (1 + INFLATION_ZONE_EURO[a] / 100);
+for (let a = ANNEE_REF_EU - 1; a >= 2019; a--) INDICE_PRIX[a] = INDICE_PRIX[a + 1] / (1 + INFLATION_ZONE_EURO[a + 1] / 100);
+const prixMinuteEU = an => COUT_MINUTE_EU_REF * INDICE_PRIX[an];
+
+const NOMS_COURTS = { AA: "American", AS: "Alaska", B6: "JetBlue", DL: "Delta", F9: "Frontier", G4: "Allegiant",
+  NK: "Spirit", UA: "United", WN: "Southwest", HA: "Hawaiian", "9E": "Endeavor", MQ: "Envoy", OH: "PSA",
+  OO: "SkyWest", YX: "Republic", YV: "Mesa", QX: "Horizon", EV: "ExpressJet" };
+
+const ETATS = { AK: "Alaska", AL: "Alabama", AR: "Arkansas", AZ: "Arizona", CA: "Californie", CO: "Colorado", CT: "Connecticut",
+  DC: "District de Columbia", DE: "Delaware", FL: "Floride", GA: "Géorgie", HI: "Hawaï", IA: "Iowa", ID: "Idaho", IL: "Illinois",
+  IN: "Indiana", KS: "Kansas", KY: "Kentucky", LA: "Louisiane", MA: "Massachusetts", MD: "Maryland", ME: "Maine", MI: "Michigan",
+  MN: "Minnesota", MO: "Missouri", MS: "Mississippi", MT: "Montana", NC: "Caroline du Nord", ND: "Dakota du Nord", NE: "Nebraska",
+  NH: "New Hampshire", NJ: "New Jersey", NM: "Nouveau-Mexique", NV: "Nevada", NY: "New York", OH: "Ohio", OK: "Oklahoma",
+  OR: "Oregon", PA: "Pennsylvanie", PR: "Porto Rico", RI: "Rhode Island", SC: "Caroline du Sud", SD: "Dakota du Sud",
+  TN: "Tennessee", TT: "Guam et Mariannes", TX: "Texas", UT: "Utah", VA: "Virginie", VI: "Îles Vierges", VT: "Vermont",
+  WA: "Washington", WI: "Wisconsin", WV: "Virginie-Occidentale", WY: "Wyoming" };
+const PAYS_FR = { Albania: "Albanie", Armenia: "Arménie", Austria: "Autriche", Belgium: "Belgique", "Bosnia and Herzegovina": "Bosnie-Herzégovine",
+  Bulgaria: "Bulgarie", Croatia: "Croatie", Cyprus: "Chypre", "Czech Republic": "Tchéquie", Denmark: "Danemark", Estonia: "Estonie",
+  Finland: "Finlande", France: "France", Georgia: "Géorgie", Germany: "Allemagne", Greece: "Grèce", Hungary: "Hongrie", Iceland: "Islande",
+  Ireland: "Irlande", Israel: "Israël", Italy: "Italie", Latvia: "Lettonie", Lithuania: "Lituanie", Luxembourg: "Luxembourg", Malta: "Malte",
+  Moldova: "Moldavie", Montenegro: "Monténégro", Morocco: "Maroc", Netherlands: "Pays-Bas", Norway: "Norvège", Poland: "Pologne",
+  Portugal: "Portugal", "Republic of North Macedonia": "Macédoine du Nord", Romania: "Roumanie", Serbia: "Serbie", Slovakia: "Slovaquie",
+  Slovenia: "Slovénie", Spain: "Espagne", Sweden: "Suède", Switzerland: "Suisse", "Türkiye": "Turquie", Ukraine: "Ukraine",
+  "United Kingdom": "Royaume-Uni" };
+
+const CAUSES = {
+  USA: [
+    { k: "kA", label: "Avion précédent en retard" },
+    { k: "kC", label: "Compagnie (équipage, maintenance…)" },
+    { k: "kN", label: "Système aérien (trafic, aéroport)" },
+    { k: "kM", label: "Météo extrême" },
+    { k: "kS", label: "Sûreté" },
+  ],
+  Europe: [
+    { k: "aC", label: "Capacité (aéroport, espace aérien)" },
+    { k: "aM", label: "Météo" },
+    { k: "aP", label: "Personnel du contrôle aérien" },
+    { k: "aG", label: "Grèves et perturbations" },
+    { k: "aE", label: "Événements" },
+  ],
+};
+const CHAMPS = {
+  USA: ["n", "ann", "det", "arr", "r15", "sArr", "minArr", "kC", "kM", "kN", "kS", "kA"],
+  Europe: ["dep", "arrE", "atfm", "atfm15", "aC", "aM", "aP", "aG", "aE", "depMin", "depMes"],
+};
+
+// Pays de la source EUROCONTROL situés hors d'Europe : exclus à la lecture (modifier cette liste si besoin)
+const PAYS_EXCLUS = new Set(["Israel", "Morocco", "Türkiye", "Georgia", "Armenia"]);
+
+let ZONE = "USA";
+const F = { region: "", aero: "", cie: "" }; // filtres actifs
+
+/* =====================================================================
+   2. OUTILS
+   ===================================================================== */
+const FR = d3.formatLocale({ decimal: ",", thousands: " ", grouping: [3], currency: ["", " €"] });
+const fmt = {
+  int: FR.format(",d"),
+  d1: FR.format(",.1f"),
+  d2: FR.format(",.2f"),
+  pct: v => isNaN(v) ? "n.d." : FR.format(",.1f")(v) + " %",
+  pct0: v => isNaN(v) ? "n.d." : FR.format(",.0f")(v) + " %",
+  evol: v => { if (!isFinite(v)) return "n.d."; const r = Math.round(v); return r === 0 ? "0 %" : (r > 0 ? "+" : "−") + FR.format(",d")(Math.abs(r)) + " %"; },
+  min: v => isNaN(v) ? "n.d." : FR.format(",.1f")(v) + " min",
+  minutes: v => v >= 1e6 ? FR.format(",.1f")(v / 1e6) + " M min" : v >= 1e3 ? FR.format(",.0f")(v / 1e3) + " k min" : FR.format(",.0f")(v) + " min",
+  eur: v => {
+    if (v == null || isNaN(v)) return "n.d.";
+    if (Math.abs(v) >= 1e9) return FR.format(",.2f")(v / 1e9) + " Md€";
+    if (Math.abs(v) >= 1e6) return FR.format(",.1f")(v / 1e6) + " M€";
+    if (Math.abs(v) >= 1e3) return FR.format(",.0f")(v / 1e3) + " k€";
+    return FR.format(",.0f")(v) + " €";
+  },
+};
+const MOIS = ["janv.", "févr.", "mars", "avr.", "mai", "juin", "juil.", "août", "sept.", "oct.", "nov.", "déc."];
+const MOIS_LONG = ["janvier", "février", "mars", "avril", "mai", "juin", "juillet", "août", "septembre", "octobre", "novembre", "décembre"];
+const css = n => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+const SERIES = () => ["--s1", "--s2", "--s3", "--s4", "--s5"].map(css);
+const SEQ = () => ["--seq-1", "--seq-2", "--seq-3", "--seq-4", "--seq-5"].map(css);
+const n0 = v => (v === "" || v == null) ? 0 : (+v || 0);
+const evol = (a, b) => (a > 0 && isFinite(b)) ? (b / a - 1) * 100 : NaN;
+
+function largeur(el) { return Math.max(300, el.getBoundingClientRect().width); }
+
+const tip = {
+  el: document.getElementById("tip"),
+  show(ev, html) {
+    this.el.innerHTML = html; this.el.style.opacity = 1;
+    const w = this.el.offsetWidth, h = this.el.offsetHeight;
+    let x = ev.clientX + 14, y = ev.clientY + 14;
+    if (x + w > innerWidth - 8) x = ev.clientX - w - 14;
+    if (y + h > innerHeight - 8) y = ev.clientY - h - 14;
+    this.el.style.left = x + "px"; this.el.style.top = y + "px";
+  },
+  hide() { this.el.style.opacity = 0; },
+};
+const row = (label, val, color) => `<div class="r"><span>${color ? `<i style="background:${color}"></i>` : ""}${label}</span><span>${val}</span></div>`;
+
+function segment(el, options, valeur, onChange) {
+  const root = d3.select(el);
+  root.selectAll("button").data(options).join("button")
+    .attr("type", "button").text(d => d.label)
+    .classed("on", d => d.value === valeur)
+    .on("click", (e, d) => { root.selectAll("button").classed("on", x => x.value === d.value); onChange(d.value); });
+}
+function remplir(sel, valeurs, valeur, label = v => v) {
+  const s = d3.select(sel);
+  s.selectAll("option").data(valeurs).join("option").attr("value", d => d).text(label);
+  s.property("value", valeurs.includes(valeur) ? valeur : valeurs[valeurs.length - 1]);
+}
+function legende(el, items, ligne = false) {
+  d3.select(el).selectAll("span").data(items).join("span")
+    .html(d => `<i class="${ligne ? "line" : ""}" style="background:${d.color}"></i>${d.label}`);
+}
+function barreHaut(x, y, w, h, r = 4) {
+  r = Math.max(0, Math.min(r, h, w / 2));
+  return `M${x},${y + h}V${y + r}Q${x},${y} ${x + r},${y}H${x + w - r}Q${x + w},${y} ${x + w},${y + r}V${y + h}Z`;
+}
+function encreSur(fond) { const c = d3.hsl(fond); return c.l > 0.62 ? "#0b0b0b" : "#ffffff"; }
+function vide(el, msg) {
+  d3.select(el).selectAll("*").remove();
+  d3.select(el).append("div").attr("class", "empty").text(msg);
+}
+function svgDans(el, W, H) {
+  d3.select(el).selectAll(".empty").remove();
+  const svg = d3.select(el).selectAll("svg").data([0]).join("svg").attr("viewBox", `0 0 ${W} ${H}`);
+  svg.selectAll("*").remove();
+  return svg;
+}
+
+/* =====================================================================
+   3. LECTURE DE LA BASE
+   On garde un enregistrement par aéroport × compagnie × mois (USA)
+   et par aéroport × mois (Europe) : assez fin pour filtrer, assez léger
+   pour le navigateur.
+   ===================================================================== */
+const D = { us: [], eu: [], aeroports: new Map(), cies: new Map(), coutUSD: new Map(), acsi: new Map(), nLignes: 0 };
+const _usIdx = new Map(), _euIdx = new Map(), _routes = new Map();
+
+function lireLigne(d) {
+  D.nLignes++;
+  if (d.zone !== "USA" && PAYS_EXCLUS.has(d.pays)) return null;
+  const an = +d.annee, mo = +d.mois, code = d.aeroport_origine;
+  if (!D.aeroports.has(code)) {
+    const region = d.zone === "USA" ? (d.nom_origine || "").split(", ").pop() : d.pays;
+    D.aeroports.set(code, { code, nom: d.nom_origine || code, zone: d.zone, region,
+      lat: d.latitude_origine === "" ? NaN : +d.latitude_origine, lon: d.longitude_origine === "" ? NaN : +d.longitude_origine });
+  }
+  if (d.zone === "USA") {
+    if (d.cout_par_minute !== "" && !D.coutUSD.has(an)) D.coutUSD.set(an, +d.cout_par_minute);
+    if (!D.cies.has(d.compagnie_code)) D.cies.set(d.compagnie_code, d.compagnie_nom || d.compagnie_code);
+    if (d.score_acsi_0_100 !== "") D.acsi.set(d.compagnie_code + "|" + an, +d.score_acsi_0_100);
+    const k = code + "|" + d.compagnie_code + "|" + an + "|" + mo;
+    let r = _usIdx.get(k);
+    if (!r) { r = { o: code, c: d.compagnie_code, an, mo }; CHAMPS.USA.forEach(f => r[f] = 0); _usIdx.set(k, r); D.us.push(r); }
+    r.n += n0(d.nb_vols); r.ann += n0(d.nb_annules); r.det += n0(d.nb_detournes);
+    r.arr += n0(d.nb_vols_arrives); r.r15 += n0(d.nb_retards_arrivee_15);
+    r.sArr += n0(d.somme_retard_arrivee_min); r.minArr += n0(d.minutes_retard_arrivee_totales);
+    r.kC += n0(d.min_cause_compagnie); r.kM += n0(d.min_cause_meteo); r.kN += n0(d.min_cause_systeme_aviation_nas);
+    r.kS += n0(d.min_cause_surete); r.kA += n0(d.min_cause_avion_precedent_retarde);
+    // liaisons du mois (toutes compagnies), pour le réseau
+    const dest = d.aeroport_destination;
+    if (dest) {
+      const ym = an * 100 + mo; let mm = _routes.get(ym); if (!mm) { mm = new Map(); _routes.set(ym, mm); }
+      const rk = code + "|" + dest; let rr = mm.get(rk);
+      if (!rr) { rr = { o: code, d: dest, n: 0, arr: 0, sArr: 0 }; mm.set(rk, rr); }
+      rr.n += n0(d.nb_vols); rr.arr += n0(d.nb_vols_arrives); rr.sArr += n0(d.somme_retard_arrivee_min);
+    }
+  } else {
+    const k = code + "|" + an + "|" + mo;
+    let r = _euIdx.get(k);
+    if (!r) { r = { o: code, an, mo }; CHAMPS.Europe.forEach(f => r[f] = 0); _euIdx.set(k, r); D.eu.push(r); }
+    r.dep += n0(d.nb_departs); r.arrE += n0(d.nb_arrivees); r.atfm += n0(d.atfm_min_total);
+    r.atfm15 += n0(d.atfm_nb_arrivees_retardees_15);
+    r.aC += n0(d.atfm_min_capacite); r.aM += n0(d.atfm_min_meteo); r.aP += n0(d.atfm_min_personnel_atc);
+    r.aG += n0(d.atfm_min_perturbations_greves); r.aE += n0(d.atfm_min_evenements);
+    r.depMin += n0(d.depart_min_retard_toutes_causes); r.depMes += n0(d.nb_departs_avec_mesure_retard);
+  }
+  return null;
+}
+
+/* =====================================================================
+   4. FILTRES ET AGRÉGATIONS
+   ===================================================================== */
+// Enregistrements de la zone, filtrés. Options : ignorer le filtre aéroport ou compagnie.
+function filtrer({ zone = ZONE, sansAero = false, sansCie = false } = {}) {
+  const src = zone === "USA" ? D.us : D.eu;
+  const region = zone === ZONE ? F.region : "", aero = (zone === ZONE && !sansAero) ? F.aero : "";
+  const cie = (zone === "USA" && zone === ZONE && !sansCie) ? F.cie : "";
+  if (!region && !aero && !cie) return src;
+  return src.filter(r => (!aero || r.o === aero) && (!cie || r.c === cie) && (!region || D.aeroports.get(r.o).region === region));
+}
+function sommer(recs, zone = ZONE) {
+  const s = {}; CHAMPS[zone].forEach(f => s[f] = 0);
+  for (const r of recs) for (const f of CHAMPS[zone]) s[f] += r[f];
+  return s;
+}
+function grouper(recs, cle, zone = ZONE) {
+  const m = new Map();
+  for (const r of recs) {
+    const k = cle(r); let s = m.get(k);
+    if (!s) { s = {}; CHAMPS[zone].forEach(f => s[f] = 0); m.set(k, s); }
+    for (const f of CHAMPS[zone]) s[f] += r[f];
+  }
+  return m;
+}
+// Mesure de retard principale de chaque zone, plus des mesures secondaires pour les infos-bulles
+const MESURE = {
+  USA: { nom: "Part des vols en retard (≥ 15 min à l'arrivée)", court: "Vols en retard", f: fmt.pct,
+         v: s => s.arr ? s.r15 / s.arr * 100 : NaN, seuils: [15, 20, 25, 30], unite: v => v + " %",
+         phrase: v => `<b>${fmt.pct(v)}</b> des vols arrivent avec au moins 15 min de retard`,
+         detail: s => row("Vols", fmt.int(s.n)) + row("Vols en retard (≥ 15 min)", fmt.pct(s.arr ? s.r15 / s.arr * 100 : NaN))
+           + row("Retard moyen à l'arrivée", fmt.min(s.arr ? s.sArr / s.arr : NaN)) + row("Vols annulés", fmt.pct(s.n ? s.ann / s.n * 100 : NaN)) },
+  Europe: { nom: "Retard moyen au départ, toutes causes", court: "Retard moyen au départ", f: fmt.min,
+         v: s => s.depMes ? s.depMin / s.depMes : NaN, seuils: [10, 14, 18, 22], unite: v => v + " min",
+         phrase: v => `le retard moyen au départ est de <b>${fmt.min(v)}</b>`,
+         detail: s => row("Départs", fmt.int(s.dep)) + row("Retard moyen au départ", fmt.min(s.depMes ? s.depMin / s.depMes : NaN))
+           + row("Retard ATFM par arrivée", fmt.min(s.arrE ? s.atfm / s.arrE : NaN)) + row("Minutes ATFM", fmt.int(Math.round(s.atfm))) },
+};
+const trafic = s => ZONE === "USA" ? s.n : s.dep;
+
+function nomRegion(r) { return ZONE === "USA" ? (ETATS[r] || r) : (PAYS_FR[r] || r); }
+function nomAero(code) { const a = D.aeroports.get(code); return a ? a.nom : code; }
+function nomCie(code) { return NOMS_COURTS[code] || D.cies.get(code) || code; }
+function portee() {
+  const p = [];
+  p.push(F.aero ? nomAero(F.aero) + " (" + F.aero + ")" : F.region ? nomRegion(F.region) : (ZONE === "USA" ? "Tous les États-Unis" : "Toute l'Europe"));
+  if (ZONE === "USA" && F.cie) p.push(nomCie(F.cie));
+  return p.join(" · ");
+}
+
+/* =====================================================================
+   5. BARRE DE FILTRES
+   ===================================================================== */
+function majFiltres() {
+  d3.select("#f-region-lab").text(ZONE === "USA" ? "État" : "Pays");
+  // régions présentes dans les données de la zone
+  const regions = [...new Set([...D.aeroports.values()].filter(a => a.zone === ZONE).map(a => a.region))]
+    .sort((a, b) => nomRegion(a).localeCompare(nomRegion(b), "fr"));
+  const sr = d3.select("#f-region");
+  sr.selectAll("option").data(["", ...regions]).join("option").attr("value", d => d)
+    .text(d => d ? nomRegion(d) : (ZONE === "USA" ? "Tous les États" : "Tous les pays"));
+  sr.property("value", F.region);
+  // aéroports : seulement après le choix d'un pays / État (classés par trafic)
+  const sa = d3.select("#f-aero");
+  if (F.region) {
+    const traf = grouper(filtrer({ sansAero: true, sansCie: true }), r => r.o);
+    const aeros = [...traf.entries()].sort((a, b) => trafic(b[1]) - trafic(a[1])).map(e => e[0]);
+    sa.property("disabled", false);
+    sa.selectAll("option").data(["", ...aeros]).join("option").attr("value", d => d)
+      .text(d => d ? `${nomAero(d)} (${d})` : `Tous les aéroports (${aeros.length})`);
+  } else {
+    sa.property("disabled", true);
+    sa.selectAll("option").data([""]).join("option").attr("value", "").text("Choisir d'abord " + (ZONE === "USA" ? "un État" : "un pays"));
+  }
+  sa.property("value", F.aero);
+  // compagnies (USA seulement)
+  d3.select("#f-cie-wrap").style("display", ZONE === "USA" ? null : "none");
+  const cies = [...D.cies.keys()].sort((a, b) => nomCie(a).localeCompare(nomCie(b), "fr"));
+  const sc = d3.select("#f-cie");
+  sc.selectAll("option").data(["", ...cies]).join("option").attr("value", d => d).text(d => d ? nomCie(d) : "Toutes les compagnies");
+  sc.property("value", F.cie);
+  d3.select("#f-reset").style("visibility", (F.region || F.aero || F.cie) ? "visible" : "hidden");
+  d3.select("#scope").html("Vous regardez : <b>" + portee() + "</b>");
+}
+function choisirAero(code) {
+  if (F.aero === code) { F.aero = ""; } else { F.aero = code; F.region = D.aeroports.get(code).region; }
+  toutDessiner();
+}
+
+/* =====================================================================
+   6. EN BREF (tuiles du haut)
+   ===================================================================== */
+function enBref() {
+  const recs = filtrer(), s = sommer(recs), M = MESURE[ZONE];
+  const parAn = grouper(recs, r => r.an);
+  const dernier = parAn.get(2025);
+  const c = couts(recs).find(d => d.an === 2025);
+  const items = ZONE === "USA"
+    ? [
+      { v: fmt.int(s.n), l: "vols analysés, 2019-2025" },
+      { v: fmt.pct(dernier ? M.v(dernier) : NaN), l: "des vols arrivés avec 15 min de retard ou plus en 2025" },
+      { v: fmt.eur(c?.cout), l: "coût estimé des retards en 2025" },
+    ]
+    : [
+      { v: fmt.int(s.dep), l: "départs analysés, 2019-2025" },
+      { v: fmt.min(dernier ? M.v(dernier) : NaN), l: "de retard moyen au départ en 2025" },
+      { v: fmt.eur(c?.cout), l: "coût estimé des retards dus au contrôle aérien (ATFM) en 2025" },
+    ];
+  d3.select("#hero").selectAll("div.tile").data(items).join("div").attr("class", "tile")
+    .html(d => `<div class="v">${d.v}</div><div class="l">${d.l}</div>`);
+}
+
+/* =====================================================================
+   KPI 1 — Évolution des retards
+   ===================================================================== */
+let K1_VUE = "an";
+function kpi1() {
+  const M = MESURE[ZONE], recs = filtrer(), el = document.getElementById("k1-chart");
+  d3.select("#k1-sub").text(M.nom + (ZONE === "Europe" ? " (publié à partir de 2020)" : "") + " — " + portee());
+  segment("#k1-vue", [{ value: "an", label: "Par année" }, { value: "serie", label: "Mois par mois" }, { value: "saison", label: "Saisonnalité" }],
+    K1_VUE, v => { K1_VUE = v; kpi1(); });
+  d3.select("#k1-source").text(ZONE === "USA" ? "Source : BTS, Reporting Carrier On-Time Performance." : "Source : EUROCONTROL, retard au départ toutes causes.");
+
+  const parAn = grouper(recs, r => r.an), parMois = grouper(recs, r => r.an * 100 + r.mo);
+  const ans = ANNEES.filter(a => parAn.has(a)).map(a => ({ an: a, s: parAn.get(a), v: M.v(parAn.get(a)) })).filter(d => !isNaN(d.v));
+  if (!ans.length) { vide(el, "Pas de mesure de retard pour cette sélection."); d3.select("#k1-insight").text("Pas de données pour cette sélection."); d3.select("#k1-lire").text(""); return; }
+
+  const serie = [...parMois.entries()].map(([k, s]) => ({ date: new Date(Math.floor(k / 100), k % 100 - 1, 1), an: Math.floor(k / 100), mo: k % 100, s, v: M.v(s) }))
+    .filter(d => !isNaN(d.v)).sort((a, b) => a.date - b.date);
+  // saisonnalité : moyenne de chaque mois sur toutes les années, sans 2020
+  const parMo = grouper(recs.filter(r => r.an !== 2020), r => r.mo);
+  const saison = d3.range(1, 13).filter(m => parMo.has(m)).map(m => ({ mo: m, s: parMo.get(m), v: M.v(parMo.get(m)) })).filter(d => !isNaN(d.v));
+
+  const P = portee();
+  if ((K1_VUE === "saison" && !saison.length) || (K1_VUE === "serie" && !serie.length)) {
+    vide(el, "Pas assez de données pour cette vue (seulement 2020 disponible).");
+    d3.select("#k1-insight").text("Pas assez de données pour cette vue."); d3.select("#k1-lire").text(""); return;
+  }
+  if (K1_VUE === "an") {
+    const premier = ans[0], dernier = ans[ans.length - 1], pire = d3.greatest(ans, d => d.v);
+    d3.select("#k1-insight").html(`${P} : en ${dernier.an}, ${M.phrase(dernier.v)}, contre ${M.f(premier.v)} en ${premier.an}. `
+      + `Année la plus difficile : <b>${pire.an}</b> (${M.f(pire.v)}).`);
+    d3.select("#k1-lire").text(ZONE === "USA" ? "Hauteur de la barre = part des vols arrivés avec 15 minutes de retard ou plus. Survolez une barre pour plus de détails." : "Hauteur de la barre = retard moyen au départ, en minutes. EUROCONTROL ne publie pas cette mesure pour 2019.");
+  } else if (K1_VUE === "serie") {
+    const pire = d3.greatest(serie, d => d.v);
+    d3.select("#k1-insight").html(`${P} : le pire mois de la période est <b>${MOIS_LONG[pire.mo - 1]} ${pire.an}</b> (${M.f(pire.v)}). On voit le creux du Covid au printemps 2020 et les pics de chaque été.`);
+    d3.select("#k1-lire").text("Chaque point = un mois. Survolez la courbe pour lire la valeur et le détail du mois.");
+  } else {
+    const pire = d3.greatest(saison, d => d.v), meil = d3.least(saison, d => d.v);
+    d3.select("#k1-insight").html(`${P} : le pire mois est <b>${MOIS_LONG[pire.mo - 1]}</b> (${M.f(pire.v)}), le meilleur est <b>${MOIS_LONG[meil.mo - 1]}</b> (${M.f(meil.v)}). L'été et les fêtes concentrent les retards : plus de passagers, plus d'orages.`);
+    d3.select("#k1-lire").text("Moyenne de chaque mois sur 2019-2025, sans 2020 (année Covid non représentative).");
+  }
+
+  const W = largeur(el), H = 320, m = { t: 30, r: 16, b: 32, l: 52 }, iw = W - m.l - m.r, ih = H - m.t - m.b;
+  const svg = svgDans(el, W, H), g = svg.append("g").attr("transform", `translate(${m.l},${m.t})`);
+  const data = K1_VUE === "an" ? ans : K1_VUE === "serie" ? serie : saison;
+  const y = d3.scaleLinear().domain([0, d3.max(data, d => d.v) * 1.12]).nice().range([ih, 0]);
+  g.append("g").attr("class", "grid").call(d3.axisLeft(y).ticks(5).tickSize(-iw).tickFormat(""));
+  g.append("g").attr("class", "axis").call(d3.axisLeft(y).ticks(5).tickFormat(M.unite)).call(s => s.select(".domain").remove()).call(s => s.selectAll("line").remove());
+  const color = css("--s1");
+  const bulle = (titre, d) => `<div class="h">${titre}</div>${M.detail(d.s)}`;
+
+  if (K1_VUE === "an") {
+    const x = d3.scaleBand().domain(data.map(d => d.an)).range([0, iw]).padding(0.38);
+    g.append("g").attr("class", "axis").attr("transform", `translate(0,${ih})`).call(d3.axisBottom(x).tickSize(0).tickPadding(10)).call(s => s.select(".domain").attr("stroke", css("--axis")));
+    g.selectAll("path.bar").data(data).join("path").attr("class", "bar")
+      .attr("d", d => barreHaut(x(d.an), y(d.v), x.bandwidth(), ih - y(d.v))).attr("fill", color)
+      .on("mousemove", (e, d) => tip.show(e, bulle(d.an, d))).on("mouseleave", () => tip.hide());
+    g.selectAll("text.v").data(data).join("text").attr("class", "lbl").attr("text-anchor", "middle")
+      .attr("x", d => x(d.an) + x.bandwidth() / 2).attr("y", d => y(d.v) - 8).text(d => M.f(d.v));
+    const c20 = data.find(d => d.an === 2020);
+    if (c20) g.append("text").attr("class", "lbl-m").attr("text-anchor", "middle").attr("x", x(2020) + x.bandwidth() / 2).attr("y", y(c20.v) - 26).text("Covid");
+  } else if (K1_VUE === "serie") {
+    const x = d3.scaleTime().domain(d3.extent(data, d => d.date)).range([0, iw]);
+    g.append("g").attr("class", "axis").attr("transform", `translate(0,${ih})`).call(d3.axisBottom(x).ticks(d3.timeYear.every(1)).tickFormat(d3.timeFormat("%Y")).tickSize(4).tickPadding(6)).call(s => s.select(".domain").attr("stroke", css("--axis")));
+    g.append("path").datum(data).attr("fill", "none").attr("stroke", color).attr("stroke-width", 2)
+      .attr("d", d3.line().x(d => x(d.date)).y(d => y(d.v)));
+    const pire = d3.greatest(data, d => d.v);
+    g.append("circle").attr("cx", x(pire.date)).attr("cy", y(pire.v)).attr("r", 5).attr("fill", color).attr("stroke", css("--surface")).attr("stroke-width", 2);
+    g.append("text").attr("class", "lbl").attr("x", x(pire.date)).attr("y", y(pire.v) - 12).attr("text-anchor", x(pire.date) > iw - 80 ? "end" : "middle").text(`${MOIS[pire.mo - 1]} ${pire.an} : ${M.f(pire.v)}`);
+    const dot = g.append("circle").attr("r", 5).attr("fill", color).attr("stroke", css("--surface")).attr("stroke-width", 2).style("opacity", 0);
+    const cross = g.append("line").attr("y1", 0).attr("y2", ih).attr("stroke", css("--axis")).style("opacity", 0);
+    const bis = d3.bisector(d => d.date).center;
+    g.append("rect").attr("width", iw).attr("height", ih).attr("fill", "transparent")
+      .on("mousemove", e => {
+        const d = data[bis(data, x.invert(d3.pointer(e)[0]))];
+        cross.attr("x1", x(d.date)).attr("x2", x(d.date)).style("opacity", 1);
+        dot.attr("cx", x(d.date)).attr("cy", y(d.v)).style("opacity", 1);
+        tip.show(e, bulle(`${MOIS_LONG[d.mo - 1]} ${d.an}`, d));
+      })
+      .on("mouseleave", () => { cross.style("opacity", 0); dot.style("opacity", 0); tip.hide(); });
+  } else {
+    const x = d3.scalePoint().domain(data.map(d => d.mo)).range([0, iw]).padding(0.4);
+    g.append("g").attr("class", "axis").attr("transform", `translate(0,${ih})`).call(d3.axisBottom(x).tickFormat(m => MOIS[m - 1]).tickSize(0).tickPadding(10)).call(s => s.select(".domain").attr("stroke", css("--axis")));
+    g.append("path").datum(data).attr("fill", "none").attr("stroke", color).attr("stroke-width", 2.5)
+      .attr("d", d3.line().x(d => x(d.mo)).y(d => y(d.v)).curve(d3.curveMonotoneX));
+    g.selectAll("circle").data(data).join("circle").attr("cx", d => x(d.mo)).attr("cy", d => y(d.v)).attr("r", 5)
+      .attr("fill", color).attr("stroke", css("--surface")).attr("stroke-width", 2);
+    const ext = [d3.greatest(data, d => d.v), d3.least(data, d => d.v)];
+    g.selectAll("text.v").data(ext).join("text").attr("class", "lbl").attr("text-anchor", "middle")
+      .attr("x", d => x(d.mo)).attr("y", (d, i) => i === 0 ? y(d.v) - 12 : y(d.v) + 22).text(d => M.f(d.v));
+    g.selectAll("rect.hit").data(data).join("rect").attr("class", "hit").attr("fill", "transparent")
+      .attr("x", d => x(d.mo) - x.step() / 2).attr("width", x.step()).attr("y", 0).attr("height", ih)
+      .on("mousemove", (e, d) => tip.show(e, bulle(MOIS_LONG[d.mo - 1] + " (moyenne hors 2020)", d))).on("mouseleave", () => tip.hide());
+  }
+}
+
+/* =====================================================================
+   KPI 2 — Causes des retards
+   ===================================================================== */
+let K2_MODE = "pct";
+function kpi2() {
+  const causes = CAUSES[ZONE], cols = SERIES(), el = document.getElementById("k2-chart");
+  const parAn = grouper(filtrer(), r => r.an);
+  segment("#k2-mode", [{ value: "pct", label: "En parts (%)" }, { value: "min", label: "En minutes" }], K2_MODE, v => { K2_MODE = v; kpi2(); });
+  d3.select("#k2-sub").text((ZONE === "USA" ? "Part des minutes de retard par cause, déclarée par les compagnies" : "Minutes de retard imposées par le contrôle aérien (ATFM), par cause") + " — " + portee());
+  legende("#k2-legend", causes.map((c, i) => ({ label: c.label, color: cols[i] })));
+  d3.select("#k2-lire").text(K2_MODE === "pct" ? "Chaque barre = 100 % des minutes de retard de l'année. Survolez une couleur pour le détail." : "Longueur de la barre = nombre total de minutes de retard de l'année. Survolez une couleur pour le détail.");
+  d3.select("#k2-source").text(ZONE === "USA" ? "Source : BTS, causes de retard déclarées par les compagnies (vols arrivés avec 15 min de retard ou plus)." : "Source : EUROCONTROL, codes de retard ATFM à l'arrivée.");
+
+  const lignes = ANNEES.filter(a => parAn.has(a)).map(a => ({ lab: String(a), o: parAn.get(a) }));
+  const total = {}; causes.forEach(c => total[c.k] = d3.sum(lignes, d => d.o[c.k]));
+  const sTot = d3.sum(causes, c => total[c.k]);
+  if (!sTot) { vide(el, "Aucune minute de retard attribuée à une cause pour cette sélection."); d3.select("#k2-insight").text("Pas de données de causes pour cette sélection."); return; }
+  if (K2_MODE === "pct") lignes.push({ lab: "2019-2025", o: total, tot: true });
+  const data = lignes.map(l => {
+    const s = d3.sum(causes, c => l.o[c.k]); let cum = 0;
+    return { lab: l.lab, tot: l.tot, s, segs: causes.map((c, i) => { const v = K2_MODE === "pct" ? (s ? l.o[c.k] / s * 100 : 0) : l.o[c.k]; const seg = { ...c, i, v, p: s ? l.o[c.k] / s * 100 : 0, x0: cum, min: l.o[c.k] }; cum += v; return seg; }) };
+  });
+  const t = causes.map(c => ({ ...c, p: total[c.k] / sTot * 100 })).sort((a, b) => b.p - a.p);
+  d3.select("#k2-insight").html(`${portee()} : sur 2019-2025, la 1re cause est <b>${t[0].label.split(" (")[0].toLowerCase()}</b> (${fmt.pct0(t[0].p)} des minutes), puis <b>${t[1].label.split(" (")[0].toLowerCase()}</b> (${fmt.pct0(t[1].p)}).`
+    + (ZONE === "USA" && t[0].k === "kA" ? " Un retard en entraîne d'autres : c'est l'<b>effet domino</b>." : ""));
+
+  const W = largeur(el), rowH = 32, gap = 12, m = { t: 8, r: 8, b: 26, l: 82 };
+  const H = m.t + m.b + data.length * (rowH + gap) + 8, iw = W - m.l - m.r;
+  const svg = svgDans(el, W, H), g = svg.append("g").attr("transform", `translate(${m.l},${m.t})`);
+  const x = d3.scaleLinear().domain([0, K2_MODE === "pct" ? 100 : d3.max(data, d => d.s)]).nice().range([0, iw]);
+  g.append("g").attr("class", "axis").attr("transform", `translate(0,${data.length * (rowH + gap) + 4})`)
+    .call(d3.axisBottom(x).ticks(5).tickFormat(d => K2_MODE === "pct" ? d + " %" : fmt.minutes(d)).tickSize(0).tickPadding(6)).call(s => s.select(".domain").remove());
+  const defs = svg.append("defs");
+  data.forEach((r, ri) => {
+    const yy = ri * (rowH + gap) + (r.tot ? 8 : 0), wTot = x(K2_MODE === "pct" ? 100 : r.s);
+    defs.append("clipPath").attr("id", "k2c" + ri).append("rect").attr("x", 0).attr("y", yy).attr("width", Math.max(0, wTot)).attr("height", rowH).attr("rx", 4);
+    const rg = g.append("g").attr("clip-path", `url(#k2c${ri})`);
+    g.append("text").attr("class", r.tot ? "lbl" : "lbl-2").attr("x", -10).attr("y", yy + rowH / 2).attr("dy", "0.35em").attr("text-anchor", "end").text(r.lab);
+    rg.selectAll("rect").data(r.segs).join("rect")
+      .attr("x", d => x(d.x0)).attr("y", yy).attr("width", d => Math.max(0, x(d.v) - x(0)))
+      .attr("height", rowH).attr("fill", d => cols[d.i]).attr("stroke", css("--surface")).attr("stroke-width", 2)
+      .on("mousemove", (e, d) => tip.show(e, `<div class="h">${r.lab}</div>${row(d.label, fmt.pct(d.p), cols[d.i])}${row("Minutes de retard", fmt.int(Math.round(d.min)))}${row("Total de l'année", fmt.int(Math.round(r.s)) + " min")}`))
+      .on("mouseleave", () => tip.hide());
+    g.selectAll(null).data(r.segs.filter(d => x(d.v) - x(0) > 44)).join("text")
+      .attr("x", d => x(d.x0 + d.v / 2)).attr("y", yy + rowH / 2).attr("dy", "0.35em").attr("text-anchor", "middle")
+      .attr("font-size", 13).attr("font-weight", 650).attr("fill", d => encreSur(cols[d.i])).style("pointer-events", "none")
+      .text(d => fmt.pct0(d.p));
+  });
+}
+
+/* =====================================================================
+   KPI 3 — Carte des aéroports + classement
+   ===================================================================== */
+let FONDS = null;
+const K3 = { annee: 2024 };
+function kpi3() {
+  const M = MESURE[ZONE], el = document.getElementById("k3-chart");
+  const recsAll = filtrer({ sansAero: true });
+  const anneesZone = ANNEES.filter(a => ZONE === "USA" || D.eu.some(r => r.an === a && r.depMes > 0));
+  remplir("#k3-annee", anneesZone, K3.annee);
+  K3.annee = +d3.select("#k3-annee").property("value");
+  d3.select("#k3-annee").on("change", function () { K3.annee = +this.value; kpi3(); });
+  const an = K3.annee;
+  d3.select("#k3-sub").text((ZONE === "USA" ? "Part des vols en retard par aéroport de départ" : "Retard moyen au départ par aéroport") + `, ${an} — ` + (F.region ? nomRegion(F.region) : ZONE === "USA" ? "tous les États-Unis" : "toute l'Europe") + (ZONE === "USA" && F.cie ? " · " + nomCie(F.cie) : ""));
+  d3.select("#k3-source").text(ZONE === "USA" ? "Sources : BTS ; coordonnées OurAirports ; fond de carte us-atlas." : "Sources : EUROCONTROL ; coordonnées OurAirports ; fond de carte world-atlas.");
+
+  const parAero = grouper(recsAll.filter(r => r.an === an), r => r.o);
+  const pts = [...parAero.entries()].map(([code, s]) => ({ ...D.aeroports.get(code), s, n: trafic(s), v: M.v(s) })).filter(p => p.n > 0 && !isNaN(p.v));
+  d3.select("#k3-sens").text("plus " + sensSeq().bcp);
+  const seq = SEQ(), seuils = M.seuils, couleur = d3.scaleThreshold().domain(seuils).range(seq);
+  legende("#k3-legend", [
+    { label: "moins de " + M.unite(seuils[0]), color: seq[0] },
+    ...seuils.slice(0, -1).map((s, i) => ({ label: `${M.unite(s)} à ${M.unite(seuils[i + 1])}`, color: seq[i + 1] })),
+    { label: M.unite(seuils[seuils.length - 1]) + " et plus", color: seq[4] },
+  ]);
+  if (!pts.length) { vide(el, "Pas de données pour cette sélection et cette année."); d3.select("#k3-rank").html(""); d3.select("#k3-insight").text("Pas de données pour cette sélection."); return; }
+
+  // classement : seuil de trafic adapté à la sélection
+  const seuilTrafic = Math.min(20000, Math.round(d3.max(pts, p => p.n) * 0.1));
+  const grands = pts.filter(p => p.n >= seuilTrafic);
+  const pires = grands.slice().sort((a, b) => b.v - a.v).slice(0, 5);
+  const meilleurs = grands.slice().sort((a, b) => a.v - b.v).slice(0, 5);
+  const vmax = d3.max(grands, d => d.v) || 1;
+  const court = p => p.nom.length > 24 ? p.nom.slice(0, 23) + "…" : p.nom;
+  const li = p => `<li data-code="${p.code}" style="cursor:pointer;${F.aero && F.aero !== p.code ? "opacity:.55" : ""}"><span>${court(p)} <span style="color:var(--muted)">${p.code}</span></span><span class="val">${M.f(p.v)}</span>
+      <span class="bar-bg"><span class="bar-fg" style="display:block;width:${p.v / vmax * 100}%;background:${couleur(p.v)}"></span></span></li>`;
+  const listes = grands.length <= 10
+    ? `<h3>Classement : du plus en retard au plus ponctuel</h3><ol>${grands.slice().sort((a, b) => b.v - a.v).map(li).join("")}</ol>`
+    : `<h3>Les ${pires.length} plus en retard</h3><ol>${pires.map(li).join("")}</ol><h3>Les ${meilleurs.length} plus ponctuels</h3><ol>${meilleurs.map(li).join("")}</ol>`;
+  d3.select("#k3-rank").html(listes
+    + `<p class="hint">Aéroports avec au moins ${fmt.int(seuilTrafic)} ${ZONE === "USA" ? "vols" : "départs"} en ${an}. Cliquez sur un nom pour filtrer.</p>`);
+  d3.selectAll("#k3-rank li").on("click", function () { choisirAero(this.dataset.code); });
+
+  const zoneNom = F.region ? nomRegion(F.region) : (ZONE === "USA" ? "aux États-Unis" : "en Europe");
+  const pSel = F.aero ? pts.find(q => q.code === F.aero) : null;
+  if (F.aero && !pSel) {
+    d3.select("#k3-insight").html(`<b>${nomAero(F.aero)}</b> : pas de mesure de retard en ${an}. Essayez une autre année.`);
+  } else if (pSel) {
+    const p = pSel, classes = grands.slice().sort((a, b) => b.v - a.v), rang = classes.findIndex(q => q.code === F.aero) + 1;
+    d3.select("#k3-insight").html(`En ${an}, <b>${p.nom}</b> : ${M.phrase(p.v)}` + (rang ? `. Il est <b>${rang === 1 ? "1er" : rang + "e"} sur ${classes.length}</b> grands aéroports (${zoneNom}) du plus en retard au plus ponctuel.` : "."));
+  } else if (pires.length > 1) {
+    d3.select("#k3-insight").html(`En ${an} (${zoneNom}), <b>${pires[0].nom}</b> (${M.f(pires[0].v)}) et <b>${pires[1].nom}</b> (${M.f(pires[1].v)}) ont le plus de retards ; <b>${meilleurs[0].nom}</b> (${M.f(meilleurs[0].v)}) est le plus ponctuel.`);
+  } else d3.select("#k3-insight").html(`En ${an}, ${pts[0].nom} : ${M.phrase(pts[0].v)}.`);
+
+  // carte
+  const W = largeur(el), H = Math.round(W * (ZONE === "USA" && !F.region ? 0.62 : 0.75));
+  const svg = svgDans(el, W, H);
+  const geo = pts.filter(p => !isNaN(p.lat));
+  let proj;
+  if (ZONE === "USA" && !F.region) {
+    proj = d3.geoAlbersUsa().fitExtent([[10, 10], [W - 10, H - 10]], FONDS?.etats?.features?.length ? FONDS.etats : { type: "MultiPoint", coordinates: geo.map(p => [p.lon, p.lat]) });
+  } else {
+    // zoom sur la sélection : boîte autour des aéroports, avec une marge
+    const lons = geo.map(p => p.lon), lats = geo.map(p => p.lat), pad = F.region ? 1.2 : 0.5;
+    const box = { type: "MultiPoint", coordinates: [[d3.min(lons) - pad, d3.min(lats) - pad], [d3.max(lons) + pad, d3.max(lats) + pad]] };
+    proj = (ZONE === "USA" ? d3.geoMercator() : d3.geoConicConformal().rotate([-10, 0]).parallels([35, 65])).fitExtent([[16, 16], [W - 16, H - 16]], box);
+  }
+  const path = d3.geoPath(proj);
+  svg.append("rect").attr("width", W).attr("height", H).attr("fill", css("--surface"));
+  const fond = ZONE === "USA" ? FONDS?.etats : FONDS?.pays;
+  if (fond && fond.features.length) {
+    svg.append("g").selectAll("path").data(fond.features).join("path").attr("d", path)
+      .attr("fill", css("--surface-2")).attr("stroke", css("--axis")).attr("stroke-width", 0.6);
+  }
+  const r = d3.scaleSqrt().domain([0, d3.max(geo, d => d.n) || 1]).range([0, F.region ? 24 : (ZONE === "USA" ? 20 : 16)]);
+  const visibles = geo.map(p => ({ ...p, xy: proj([p.lon, p.lat]) })).filter(p => p.xy).sort((a, b) => b.n - a.n);
+  svg.append("g").selectAll("circle").data(visibles).join("circle")
+    .attr("cx", d => d.xy[0]).attr("cy", d => d.xy[1]).attr("r", d => Math.max(3, r(d.n)))
+    .attr("fill", d => couleur(d.v)).attr("stroke", d => d.code === F.aero ? css("--ink") : css("--surface"))
+    .attr("stroke-width", d => d.code === F.aero ? 2.5 : 1)
+    .attr("opacity", d => F.aero && d.code !== F.aero ? 0.45 : 1).style("cursor", "pointer")
+    .on("mousemove", (e, d) => tip.show(e, `<div class="h">${d.nom} (${d.code})</div>${M.detail(d.s)}<div class="hint" style="margin-top:4px">Cliquez pour filtrer sur cet aéroport</div>`))
+    .on("mouseleave", () => tip.hide())
+    .on("click", (e, d) => { tip.hide(); choisirAero(d.code); });
+  // étiquettes des plus gros aéroports quand on a zoomé sur un pays / État
+  if (F.region) {
+    svg.append("g").selectAll("text").data(visibles.slice(0, 8)).join("text").attr("class", "lbl")
+      .attr("x", d => d.xy[0] + Math.max(3, r(d.n)) + 4).attr("y", d => d.xy[1]).attr("dy", "0.35em")
+      .style("pointer-events", "none").style("paint-order", "stroke").attr("stroke", css("--surface")).attr("stroke-width", 3).text(d => d.code);
+  }
+}
+
+/* =====================================================================
+   KPI 4 — Coût : minutes de retard × prix d'une minute
+   ===================================================================== */
+const K4 = { annee: 2025 };
+function couts(recs) {
+  const parAn = grouper(recs, r => r.an);
+  return ANNEES.map(an => {
+    const o = parAn.get(an);
+    if (ZONE === "USA") {
+      const usd = D.coutUSD.get(an), prix = usd != null ? usd / TAUX_USD_PAR_EUR[an] : NaN, minutes = o ? o.minArr : NaN;
+      return { an, minutes, prixOrig: usd, conv: TAUX_USD_PAR_EUR[an], prix, cout: minutes * prix };
+    }
+    const prix = prixMinuteEU(an), minutes = o ? o.atfm : NaN;
+    return { an, minutes, prixOrig: COUT_MINUTE_EU_REF, conv: INDICE_PRIX[an], prix, cout: minutes * prix };
+  });
+}
+function kpi4() {
+  const c = couts(filtrer()), base = c[0], el = document.getElementById("k4-chart");
+  const P = portee();
+  const comparables = c.filter(d => d.an !== 2019 && !isNaN(d.cout)).map(d => d.an);
+  remplir("#k4-annee", comparables, K4.annee);
+  K4.annee = +d3.select("#k4-annee").property("value");
+  d3.select("#k4-annee").on("change", function () { K4.annee = +this.value; kpi4(); });
+  const cible = c.find(d => d.an === K4.annee) || c[c.length - 1];
+  const em = evol(base.minutes, cible.minutes), ep = evol(base.prix, cible.prix), ec = evol(base.cout, cible.cout);
+  const okBase = base.minutes > 0;
+
+  const cls = v => !isFinite(v) ? "" : v >= 0 ? "up" : "down";
+  const zn = ZONE === "USA" ? "États-Unis" : "Europe";
+  const ref = ZONE === "USA"
+    ? { v: fmt.d2(cible.prixOrig) + " $", l: `prix de référence d'une minute en ${cible.an} (${zn}, Airlines for America)`,
+        txt: `÷ ${FR.format(",.4f")(cible.conv)} (taux de change ${cible.an}) = ${fmt.d2(cible.prix)} €` }
+    : { v: fmt.d2(COUT_MINUTE_EU_REF) + " €", l: `prix de référence d'une minute (${zn}, valeur ${ANNEE_REF_EU})`,
+        txt: `× ${FR.format(",.4f")(cible.conv)} (inflation) = ${fmt.d2(cible.prix)} € en ${cible.an}` };
+  const tuiles = [
+    { v: ref.v, l: ref.l, txt: ref.txt },
+    { v: fmt.d2(cible.prix) + " €", l: `prix d'une minute de retard en ${cible.an} (${zn})`, d: ep },
+    { v: fmt.minutes(cible.minutes || 0), l: (ZONE === "USA" ? "de retard en " : "de retard ATFM en ") + cible.an, d: em },
+    { v: fmt.eur(cible.cout), l: `coût total des retards en ${cible.an} (minutes × prix)`, d: ec },
+  ];
+  d3.select("#k4-tiles").selectAll("div.tile").data(tuiles).join("div").attr("class", "tile")
+    .html(d => `<div class="v">${d.v}</div><div class="l">${d.l}</div>` + (d.txt ? `<div class="d ref">${d.txt}</div>`
+      : `<div class="d ${cls(d.d)}">${isFinite(d.d) ? fmt.evol(d.d) + " par rapport à 2019" : "pas de comparaison possible avec 2019"}</div>`));
+
+  if (!okBase) {
+    d3.select("#k4-insight").html(`${P} : aucune minute de retard ${ZONE === "USA" ? "" : "ATFM "}en 2019, la comparaison avec 2019 n'est pas possible. Coût en ${cible.an} : <b>${fmt.eur(cible.cout)}</b>.`);
+  } else {
+    const candidats = c.filter(d => d.an !== 2019 && !isNaN(d.cout) && Math.abs(evol(base.minutes, d.minutes)) < 6);
+    const ex = d3.greatest(candidats, d => evol(base.cout, d.cout));
+    let txt = `${P} — entre 2019 et ${cible.an} : minutes de retard <b>${fmt.evol(em)}</b>, prix d'une minute <b>${fmt.evol(ep)}</b>, coût total <b>${fmt.evol(ec)}</b>.`;
+    if (ex) txt += ` Exemple frappant : en <b>${ex.an}</b>, presque autant de minutes de retard qu'en 2019 (${fmt.evol(evol(base.minutes, ex.minutes))}), mais un coût de <b>${fmt.evol(evol(base.cout, ex.cout))}</b> : à retard égal, <b>chaque minute coûte plus cher</b>.`;
+    else if (ec > em) txt += ` Le coût augmente plus vite que les retards : <b>chaque minute coûte plus cher</b>.`;
+    d3.select("#k4-insight").html(txt);
+  }
+
+  const cols = SERIES();
+  const series = [
+    { k: "minutes", label: "Minutes de retard", color: cols[0], f: d => fmt.minutes(d.minutes) },
+    { k: "prix", label: "Prix d'une minute", color: cols[1], f: d => fmt.d1(d.prix) + " €" },
+    { k: "cout", label: "Coût total", color: cols[2], f: d => fmt.eur(d.cout) },
+  ];
+  legende("#k4-legend", series.map(s => ({ label: s.label, color: s.color })), true);
+  if (!okBase) vide(el, "Indice impossible : pas de retard en 2019 pour cette sélection (voir le détail du calcul).");
+  else {
+    const pts = series.map(s => ({ ...s, vals: c.map(d => ({ an: d.an, i: isFinite(d[s.k]) ? d[s.k] / base[s.k] * 100 : NaN })) }));
+    const W = largeur(el), H = 340, m = { t: 16, r: W < 520 ? 16 : 150, b: 32, l: 48 }, iw = W - m.l - m.r, ih = H - m.t - m.b;
+    const svg = svgDans(el, W, H), g = svg.append("g").attr("transform", `translate(${m.l},${m.t})`);
+    const x = d3.scalePoint().domain(ANNEES).range([0, iw]).padding(0.2);
+    const all = pts.flatMap(s => s.vals.map(v => v.i)).filter(isFinite);
+    const y = d3.scaleLinear().domain([Math.min(0, d3.min(all)), d3.max(all) * 1.08]).nice().range([ih, 0]);
+    g.append("g").attr("class", "grid").call(d3.axisLeft(y).ticks(6).tickSize(-iw).tickFormat(""));
+    g.append("g").attr("class", "axis").call(d3.axisLeft(y).ticks(6)).call(s => s.select(".domain").remove()).call(s => s.selectAll("line").remove());
+    g.append("g").attr("class", "axis").attr("transform", `translate(0,${ih})`).call(d3.axisBottom(x).tickSize(0).tickPadding(10)).call(s => s.select(".domain").attr("stroke", css("--axis")));
+    g.append("line").attr("x1", 0).attr("x2", iw).attr("y1", y(100)).attr("y2", y(100)).attr("stroke", css("--muted")).attr("stroke-dasharray", "4 4");
+    g.append("text").attr("class", "lbl-m").attr("x", 4).attr("y", y(100) - 6).text("niveau de 2019");
+    const line = d3.line().defined(d => isFinite(d.i)).x(d => x(d.an)).y(d => y(d.i));
+    pts.forEach(s => {
+      g.append("path").datum(s.vals).attr("fill", "none").attr("stroke", s.color).attr("stroke-width", s.k === "cout" ? 3 : 2).attr("d", line);
+      g.selectAll(null).data(s.vals.filter(d => isFinite(d.i))).join("circle").attr("cx", d => x(d.an)).attr("cy", d => y(d.i))
+        .attr("r", 4).attr("fill", s.color).attr("stroke", css("--surface")).attr("stroke-width", 2);
+    });
+    if (m.r > 100) {
+      const fin = pts.map(s => { const l = [...s.vals].reverse().find(v => isFinite(v.i)); return { s, y: y(l.i), i: l.i }; }).sort((a, b) => a.y - b.y);
+      for (let k = 1; k < fin.length; k++) if (fin[k].y - fin[k - 1].y < 34) fin[k].y = fin[k - 1].y + 34;
+      fin.forEach(e => {
+        const t = g.append("text").attr("x", iw + 10).attr("y", e.y).attr("dy", "0.35em");
+        t.append("tspan").attr("class", "lbl").text(e.s.label);
+        t.append("tspan").attr("class", "lbl-2").attr("x", iw + 10).attr("dy", "1.2em").text("indice " + fmt.int(Math.round(e.i)));
+      });
+    }
+    const cross = g.append("line").attr("y1", 0).attr("y2", ih).attr("stroke", css("--axis")).style("opacity", 0);
+    g.selectAll("rect.hit").data(c).join("rect").attr("class", "hit").attr("fill", "transparent")
+      .attr("x", d => x(d.an) - x.step() / 2).attr("width", x.step()).attr("y", 0).attr("height", ih)
+      .on("mousemove", (e, d) => {
+        cross.attr("x1", x(d.an)).attr("x2", x(d.an)).style("opacity", 1);
+        tip.show(e, `<div class="h">${d.an}</div>` + series.map(s => row(s.label, isFinite(d[s.k]) ? s.f(d) : "n.d.", s.color)).join(""));
+      })
+      .on("mouseleave", () => { cross.style("opacity", 0); tip.hide(); });
+  }
+
+  const usa = ZONE === "USA";
+  const ok = c.filter(d => isFinite(d.cout));
+  d3.select("#k4-table").html(`<table><thead><tr><th>Année</th><th class="n">Minutes de retard</th>
+      <th class="n">${usa ? "Prix publié ($)" : "Prix de référence"}</th><th class="n">${usa ? "Taux de change (1 € = … $)" : `Indice des prix (${ANNEE_REF_EU} = 100)`}</th>
+      <th class="n">Prix d'une minute (€)</th><th class="n">Coût total</th></tr></thead><tbody>
+      ${c.map(d => `<tr><td>${d.an}</td><td class="n">${isFinite(d.minutes) ? fmt.int(Math.round(d.minutes)) : "n.d."}</td>
+        <td class="n">${d.prixOrig == null ? "n.d." : (usa ? fmt.d2(d.prixOrig) + " $" : fmt.int(d.prixOrig) + " € (réf. " + ANNEE_REF_EU + ")")}</td>
+        <td class="n">${usa ? FR.format(",.4f")(d.conv) : fmt.d1(d.conv * 100)}</td>
+        <td class="n">${isNaN(d.prix) ? "n.d." : fmt.d1(d.prix)}</td><td class="n">${fmt.eur(d.cout)}</td></tr>`).join("")}
+      <tr class="tot"><td>Total${usa ? " (sans 2020)" : ""}</td><td class="n">${fmt.int(Math.round(d3.sum(ok, d => d.minutes)))}</td><td></td><td></td><td></td><td class="n">${fmt.eur(d3.sum(ok, d => d.cout))}</td></tr>
+      </tbody></table>
+      <p class="lire">${usa
+        ? "Prix d'une minute (€) = prix publié en dollars ÷ taux de change moyen de l'année. Coût total = minutes × prix d'une minute."
+        : `Prix d'une minute (€) = 100 € (référence ${ANNEE_REF_EU}) × indice des prix de l'année ÷ 100. Coût total = minutes ATFM × prix d'une minute.`}</p>`);
+  d3.select("#k4-source").text(usa
+    ? "Sources : minutes de retard BTS ; coût d'une minute Airlines for America (dollars courants) ; taux de change BCE."
+    : `Sources : minutes de retard ATFM EUROCONTROL ; 100 € par minute de référence (${ANNEE_REF_EU}) ; inflation Eurostat. Ne couvre que les retards imposés par le contrôle aérien.`);
+}
+
+/* =====================================================================
+   KPI 5 — Réseau dynamique des liaisons entre aéroports (USA)
+   ===================================================================== */
+const K5 = { i: null, seuil: 300, vue: "carte", timer: null };
+const POS = new Map();       // positions du graphe de forces, gardées d'un mois à l'autre
+let K5_COVID = null;
+const nomMois = ym => `${MOIS[ym % 100 - 1]} ${Math.floor(ym / 100)}`;
+
+function reseauMois(ym) {
+  const pairs = new Map(), nodes = new Map();
+  for (const r of D.routes.get(ym) || []) {
+    if (!r.n) continue;
+    const a = r.o < r.d ? r.o : r.d, b = r.o < r.d ? r.d : r.o, k = a + "|" + b;
+    let p = pairs.get(k); if (!p) { p = { a, b, n: 0, arr: 0, sArr: 0 }; pairs.set(k, p); }
+    p.n += r.n; p.arr += r.arr; p.sArr += r.sArr;
+    for (const c of [r.o, r.d]) { if (!nodes.has(c)) nodes.set(c, { code: c, n: 0, arr: 0, sArr: 0, deg: 0 }); nodes.get(c).n += r.n; }
+    const nd = nodes.get(r.d); nd.arr += r.arr; nd.sArr += r.sArr; // retard à l'arrivée dans cet aéroport
+  }
+  const liens = [...pairs.values()];
+  liens.forEach(p => { nodes.get(p.a).deg++; nodes.get(p.b).deg++; p.v = p.arr ? p.sArr / p.arr : NaN; });
+  nodes.forEach(n => n.v = n.arr ? n.sArr / n.arr : NaN);
+  return { liens, nodes };
+}
+function stopAnim() { if (K5.timer) { clearInterval(K5.timer); K5.timer = null; } d3.select("#k5-play").text("▶ Animer"); }
+
+function kpi5() {
+  const el = document.getElementById("k5-chart"), mois = D.mois;
+  if (K5.i == null) K5.i = mois.length - 1;
+  const ym = mois[K5.i];
+  d3.select("#k5-mois").attr("min", 0).attr("max", mois.length - 1).property("value", K5.i)
+    .on("input", function () { stopAnim(); K5.i = +this.value; kpi5(); });
+  d3.select("#k5-mois-val").text(nomMois(ym));
+  d3.select("#k5-seuil").property("value", K5.seuil).on("input", function () { K5.seuil = +this.value; kpi5(); });
+  d3.select("#k5-seuil-val").text(fmt.int(K5.seuil));
+  d3.select("#k5-play").on("click", () => {
+    if (K5.timer) return stopAnim();
+    if (K5.i >= mois.length - 1) K5.i = 0;
+    d3.select("#k5-play").text("⏸ Pause");
+    K5.timer = setInterval(() => { if (K5.i >= mois.length - 1) return stopAnim(); K5.i++; kpi5(); }, 650);
+  });
+  segment("#k5-vue", [{ value: "carte", label: "Carte" }, { value: "force", label: "Graphe de forces" }], K5.vue, v => { K5.vue = v; kpi5(); });
+
+  const { liens, nodes } = reseauMois(ym);
+  const affiches = liens.filter(l => l.n >= K5.seuil).sort((a, b) => a.n - b.n);
+  // filtres de la page (en vue USA) : État → on met en avant ses liaisons ; aéroport → on isole ses liaisons
+  const region = ZONE === "USA" ? F.region : "", aero = ZONE === "USA" ? F.aero : "";
+  const dansSel = c => aero ? c === aero : region ? D.aeroports.get(c)?.region === region : true;
+  const actif = l => dansSel(l.a) || dansSel(l.b);
+  const filtreActif = !!(region || aero);
+
+  d3.select("#k5-tiles").selectAll("div.tile").data([
+    { v: fmt.int(nodes.size), l: "aéroports desservis" },
+    { v: fmt.int(liens.length), l: "liaisons directes actives" },
+    { v: fmt.int(affiches.length), l: `liaisons affichées (≥ ${fmt.int(K5.seuil)} vols)` },
+    { v: fmt.d1(nodes.size ? 2 * liens.length / nodes.size : 0), l: "connexions moyennes par aéroport" },
+  ]).join("div").attr("class", "tile").html(d => `<div class="v">${d.v}</div><div class="l">${d.l}</div>`);
+
+  // phrase clé
+  if (!K5_COVID) K5_COVID = { a: reseauMois(201904).liens, b: reseauMois(202004).liens };
+  const volsA = d3.sum(K5_COVID.a, l => l.n), volsB = d3.sum(K5_COVID.b, l => l.n);
+  const lA = K5_COVID.a.filter(l => l.n >= K5.seuil).length, lB = K5_COVID.b.filter(l => l.n >= K5.seuil).length;
+  const hub = d3.greatest([...nodes.values()], n => n.deg);
+  let txt = `En ${nomMois(ym)} : <b>${fmt.int(nodes.size)}</b> aéroports et <b>${fmt.int(liens.length)}</b> liaisons directes. `;
+  if (aero && nodes.has(aero)) { const n = nodes.get(aero); txt += `<b>${nomAero(aero)}</b> : ${fmt.int(n.deg)} liaisons directes, ${fmt.int(n.n)} vols, retard moyen à l'arrivée ${fmt.min(n.v)}. `; }
+  else if (aero) txt += `<b>${nomAero(aero)}</b> n'a aucun vol ce mois-ci. `;
+  else if (hub) txt += `Le plus grand carrefour est <b>${nomAero(hub.code)}</b> (${fmt.int(hub.deg)} liaisons). `;
+  txt += `Au plus fort du Covid, en avril 2020, les vols ont chuté de <b>${fmt.evol(evol(volsA, volsB))}</b> par rapport à avril 2019, et les liaisons d'au moins ${fmt.int(K5.seuil)} vols sont passées de ${fmt.int(lA)} à <b>${fmt.int(lB)}</b>.`;
+  d3.select("#k5-insight").html(txt);
+
+  // couleurs des liaisons : retard moyen à l'arrivée
+  const seq = SEQ(), seuils = [0, 5, 10, 15], couleur = d3.scaleThreshold().domain(seuils).range(seq);
+  legende("#k5-legend", [
+    { label: "en avance (< 0 min)", color: seq[0] }, { label: "0 à 5 min", color: seq[1] }, { label: "5 à 10 min", color: seq[2] },
+    { label: "10 à 15 min", color: seq[3] }, { label: "15 min et plus", color: seq[4] },
+  ], true);
+  d3.select("#k5-fig").text(`Liaisons directes entre aéroports américains, ${nomMois(ym)}`);
+  if (!affiches.length) { vide(el, "Aucune liaison au-dessus du seuil ce mois-ci : baissez le seuil."); return; }
+
+  // nœuds affichés
+  const codes = new Set(affiches.flatMap(l => [l.a, l.b]));
+  if (aero && nodes.has(aero)) codes.add(aero);
+  const nds = [...codes].map(c => ({ ...nodes.get(c), ap: D.aeroports.get(c) }));
+  const W = largeur(el), H = Math.round(W * 0.62);
+  const svg = svgDans(el, W, H);
+  svg.append("rect").attr("width", W).attr("height", H).attr("fill", css("--surface"));
+  const r = d3.scaleSqrt().domain([0, d3.max(nds, d => d.n)]).range([2.5, 16]);
+
+  if (K5.vue === "carte") {
+    const pts = nds.filter(d => d.ap && !isNaN(d.ap.lat));
+    const proj = d3.geoAlbersUsa().fitExtent([[10, 10], [W - 10, H - 10]], FONDS?.etats?.features?.length ? FONDS.etats : { type: "MultiPoint", coordinates: pts.map(d => [d.ap.lon, d.ap.lat]) });
+    if (FONDS?.etats?.features?.length) svg.append("g").selectAll("path").data(FONDS.etats.features).join("path").attr("d", d3.geoPath(proj))
+      .attr("fill", css("--surface-2")).attr("stroke", css("--axis")).attr("stroke-width", 0.6);
+    nds.forEach(d => { const xy = d.ap && !isNaN(d.ap.lat) ? proj([d.ap.lon, d.ap.lat]) : null; d.x = xy ? xy[0] : null; d.y = xy ? xy[1] : null; });
+  } else {
+    const liensF = affiches.map(l => ({ source: l.a, target: l.b, n: l.n }));
+    nds.forEach(d => { const p = POS.get(d.code); d.x = p ? p[0] * W : W / 2 + (Math.random() - .5) * 50; d.y = p ? p[1] * H : H / 2 + (Math.random() - .5) * 50; });
+    const w = d3.scaleSqrt().domain([0, d3.max(affiches, l => l.n)]).range([0.05, 0.6]);
+    const sim = d3.forceSimulation(nds)
+      .force("link", d3.forceLink(liensF).id(d => d.code).distance(80).strength(l => w(l.n)))
+      .force("charge", d3.forceManyBody().strength(-220))
+      .force("x", d3.forceX(W / 2).strength(0.03)).force("y", d3.forceY(H / 2).strength(0.045))
+      .force("collide", d3.forceCollide(d => r(d.n) + 10)).stop();
+    for (let k = 0; k < 260; k++) sim.tick();
+    // on étire le résultat pour occuper tout l'espace disponible (marges pour les étiquettes)
+    const pad = 34, ex = d3.extent(nds, d => d.x), ey = d3.extent(nds, d => d.y);
+    const sx = d3.scaleLinear().domain(ex[0] === ex[1] ? [ex[0] - 1, ex[0] + 1] : ex).range([pad, W - pad]);
+    const sy = d3.scaleLinear().domain(ey[0] === ey[1] ? [ey[0] - 1, ey[0] + 1] : ey).range([pad + 8, H - pad]);
+    nds.forEach(d => { POS.set(d.code, [d.x / W, d.y / H]); d.x = sx(d.x); d.y = sy(d.y); });
+  }
+  const pos = new Map(nds.filter(d => d.x != null).map(d => [d.code, d]));
+  const ep = d3.scaleSqrt().domain([0, d3.max(affiches, l => l.n)]).range([0.4, 6]);
+  const visibles = affiches.filter(l => pos.has(l.a) && pos.has(l.b));
+  svg.append("g").selectAll("line").data(visibles).join("line")
+    .attr("x1", l => pos.get(l.a).x).attr("y1", l => pos.get(l.a).y).attr("x2", l => pos.get(l.b).x).attr("y2", l => pos.get(l.b).y)
+    .attr("stroke", l => couleur(l.v)).attr("stroke-width", l => ep(l.n)).attr("stroke-linecap", "round")
+    .attr("opacity", l => filtreActif ? (actif(l) ? 0.95 : 0.06) : 0.7)
+    .on("mousemove", (e, l) => tip.show(e, `<div class="h">${l.a} ↔ ${l.b}</div>${row("Vols du mois (2 sens)", fmt.int(l.n))}${row("Retard moyen à l'arrivée", fmt.min(l.v))}<div class="hint">${nomAero(l.a)} — ${nomAero(l.b)}</div>`))
+    .on("mouseleave", () => tip.hide());
+  const nVis = [...pos.values()].sort((a, b) => b.n - a.n);
+  const voisins = new Set(filtreActif ? visibles.filter(actif).flatMap(l => [l.a, l.b]) : []);
+  svg.append("g").selectAll("circle").data(nVis).join("circle")
+    .attr("cx", d => d.x).attr("cy", d => d.y).attr("r", d => r(d.n))
+    .attr("fill", css("--s2"))
+    .attr("stroke", d => d.code === aero ? css("--ink") : css("--surface")).attr("stroke-width", d => d.code === aero ? 2.5 : 1.2)
+    .attr("opacity", d => filtreActif && !voisins.has(d.code) && !dansSel(d.code) ? 0.18 : 0.95).style("cursor", "pointer")
+    .on("mousemove", (e, d) => tip.show(e, `<div class="h">${nomAero(d.code)} (${d.code})</div>${row("Vols (départs + arrivées)", fmt.int(d.n))}${row("Liaisons directes", fmt.int(d.deg))}${row("Retard moyen à l'arrivée", fmt.min(d.v))}<div class="hint" style="margin-top:4px">Cliquez pour isoler ses liaisons (et filtrer la page)</div>`))
+    .on("mouseleave", () => tip.hide())
+    .on("click", (e, d) => { tip.hide(); stopAnim(); if (ZONE !== "USA") { ZONE = "USA"; segment("#zone", [{ value: "USA", label: "États-Unis" }, { value: "Europe", label: "Europe" }], ZONE, v => { ZONE = v; F.region = F.aero = F.cie = ""; toutDessiner(); }); F.cie = ""; } if (D.aeroports.has(d.code)) choisirAero(d.code); });
+  // étiquettes au-dessus des nœuds : les liaisons sélectionnées en clair, les autres grands aéroports en grisé
+  const enAvant = d => !filtreActif || voisins.has(d.code) || dansSel(d.code);
+  const aLabel = [...nVis.filter(enAvant).slice(0, filtreActif ? 26 : 20), ...(filtreActif ? nVis.filter(d => !enAvant(d)).slice(0, 8) : [])];
+  svg.append("g").selectAll("text").data(aLabel).join("text").attr("class", "lbl")
+    .attr("x", d => d.x).attr("y", d => d.y - r(d.n) - 5).attr("text-anchor", "middle").style("pointer-events", "none")
+    .style("fill", d => enAvant(d) ? css("--ink") : css("--muted")).attr("opacity", d => enAvant(d) ? 1 : 0.7)
+    .style("paint-order", "stroke").attr("stroke", css("--surface")).attr("stroke-width", 3).text(d => d.code);
+}
+
+/* =====================================================================
+   MÉTHODE : tableau des taux
+   ===================================================================== */
+function tableMethode() {
+  d3.select("#methode-table").html(`<table><thead><tr><th>Année</th>${ANNEES.map(a => `<th class="n">${a}</th>`).join("")}</tr></thead><tbody>
+    <tr><td>Taux de change moyen (1 € = … $)</td>${ANNEES.map(a => `<td class="n">${FR.format(",.4f")(TAUX_USD_PAR_EUR[a])}</td>`).join("")}</tr>
+    <tr><td>Inflation zone euro</td>${ANNEES.map(a => `<td class="n">${fmt.d1(INFLATION_ZONE_EURO[a])} %</td>`).join("")}</tr>
+    <tr><td>Prix d'une minute en Europe (€, référence 100 € en ${ANNEE_REF_EU})</td>${ANNEES.map(a => `<td class="n">${fmt.d2(prixMinuteEU(a))}</td>`).join("")}</tr>
+    </tbody></table>`);
+}
+
+/* =====================================================================
+   FENÊTRES « TABLEAU VISUEL »
+   Choix des encodages visuels justifiés avec le classement de Mackinlay (1986)
+   ===================================================================== */
+const MACKINLAY = {
+  quantitative: ["Position", "Longueur", "Angle", "Aire", "Volume", "Luminosité", "Saturation", "Teinte", "Texture", "Forme"],
+  ordinale: ["Position", "Luminosité", "Saturation", "Teinte", "Texture", "Longueur", "Angle", "Aire", "Volume", "Forme"],
+  nominale: ["Position", "Teinte", "Texture", "Luminosité", "Saturation", "Forme", "Longueur", "Angle", "Aire", "Volume"],
+};
+const NOM_CANAL = { Aire: "Aire (taille)", Saturation: "Saturation (couleur)", Teinte: "Teinte (couleur)" };
+const COUL_TYPE = { quantitative: "--s1", ordinale: "--s3", nominale: "--s2" };
+const rangMack = (type, canal) => { const i = MACKINLAY[type].indexOf(canal); return i < 0 ? "—" : (i === 0 ? "1er" : (i + 1) + "e"); };
+// en mode clair : clair = peu, foncé = beaucoup ; en mode sombre l'échelle est inversée pour ressortir sur le fond noir
+const sensSeq = () => { const q = SEQ(); return d3.hsl(q[0]).l > d3.hsl(q[4]).l ? { peu: "clair", bcp: "foncé" } : { peu: "foncé", bcp: "clair" }; };
+const hslTxt = hex => { const c = d3.hsl(hex); return `teinte ${isNaN(c.h) ? "—" : Math.round(c.h) + "°"} · saturation ${Math.round((c.s || 0) * 100)} % · luminosité ${Math.round(c.l * 100)} %`; };
+
+function infos(id) {
+  const usa = ZONE === "USA";
+  const mesureNom = usa ? "Part des vols en retard (≥ 15 min)" : "Retard moyen au départ (min)";
+  const S = SERIES(), Q = SEQ(), sens = sensSeq();
+  const neutres = [
+    { c: css("--ink"), r: "Texte principal et valeurs", n: "Gris presque noir (ou blanc en mode sombre) : saturation nulle, il ne concurrence pas les données." },
+    { c: css("--grid"), r: "Grille de fond", n: "Gris très clair, saturation nulle : la grille aide à lire sans attirer l'œil." },
+  ];
+  if (id === "kpi1") {
+    const vue = K1_VUE;
+    return {
+      num: 1, titre: "Les retards augmentent-ils ?",
+      type: vue === "an" ? "Diagramme en barres verticales" : vue === "serie" ? "Courbe chronologique (84 mois)" : "Courbe de saisonnalité (12 mois)",
+      but: "Voir si les retards montent ou baissent dans le temps et repérer les périodes difficiles.",
+      question: "Quand y a-t-il le plus de retards ?",
+      enc: [
+        { d: vue === "saison" ? "Mois de l'année" : vue === "serie" ? "Mois (date)" : "Année", t: "ordinale", c: "Position", q: "axe horizontal" },
+        { d: mesureNom, t: "quantitative", c: vue === "an" ? "Longueur" : "Position", q: vue === "an" ? "hauteur de la barre" : "hauteur du point" },
+        ...(vue === "an" ? [{ d: mesureNom, t: "quantitative", c: "Position", q: "sommet lu sur l'axe" }] : []),
+      ],
+      couleurs: [{ c: S[0], r: "La série (barres ou courbe)", n: "Une seule teinte bleue, bien saturée : il n'y a qu'une série, la couleur n'a pas à porter d'information. Le bleu ressort sur le fond neutre." }, ...neutres],
+      pourquoi: "Position et longueur sont les deux canaux les plus précis pour comparer des quantités (1er et 2e pour le quantitatif). L'axe vertical part de zéro pour que la hauteur des barres soit proportionnelle aux valeurs. Les valeurs exactes sont écrites au-dessus des barres.",
+      nonUtil: [
+        ["Teinte", "Une seule série : changer de couleur par année ferait croire à des catégories différentes."],
+        ["Aire / Volume", "Moins précis que la longueur ; un effet 3D déformerait la lecture des hauteurs."],
+        ["Angle", "Un camembert ne montre pas une évolution dans le temps."],
+      ],
+      calcul: usa ? "Part des vols en retard = vols arrivés avec 15 min de retard ou plus ÷ vols arrivés × 100." : "Retard moyen au départ = minutes de retard au départ ÷ départs mesurés (publié à partir de 2020).",
+      inter: "Boutons Par année / Mois par mois / Saisonnalité ; survol pour le détail (vols, retard moyen, annulations) ; les filtres du haut s'appliquent.",
+      limite: usa ? "La saisonnalité exclut 2020 (Covid), non représentative." : "Mesure européenne différente de la mesure américaine : ne pas comparer les deux zones directement.",
+    };
+  }
+  if (id === "kpi2") return {
+    num: 2, titre: "Pourquoi les vols sont-ils en retard ?",
+    type: K2_MODE === "pct" ? "Barres horizontales empilées à 100 %" : "Barres horizontales empilées (en minutes)",
+    but: "Comparer le poids de chaque cause de retard et son évolution d'une année à l'autre.",
+    question: "Quelle est la première cause de retard ?",
+    enc: [
+      { d: "Année", t: "ordinale", c: "Position", q: "une ligne par année" },
+      { d: "Cause du retard", t: "nominale", c: "Teinte", q: "une couleur par cause" },
+      { d: "Cause du retard", t: "nominale", c: "Position", q: "ordre fixe dans la barre" },
+      { d: K2_MODE === "pct" ? "Part des minutes" : "Minutes de retard", t: "quantitative", c: "Longueur", q: "longueur du segment" },
+    ],
+    couleurs: CAUSES[ZONE].map((c, i) => ({ c: S[i], r: c.label, n: "" })),
+    couleursNote: "Les 5 teintes sont très éloignées sur le cercle des couleurs (bleu, orange, vert, jaune, rose), mais toutes sont bien saturées (environ 70 à 100 %) avec des luminosités voisines : aucune cause ne paraît plus « importante » qu'une autre. "
+      + "L'ordre des couleurs a été vérifié pour rester distinct pour les daltoniens. Le texte dans un segment passe en noir ou en blanc selon la luminosité du fond, pour rester lisible.",
+    pourquoi: "La cause est une catégorie sans ordre : la teinte est le 2e meilleur canal pour le nominal. La part est une quantité : elle est codée par la longueur (2e canal pour le quantitatif). Les barres sont horizontales pour que les années restent lisibles. Comme seul le premier segment part d'une ligne commune, les pourcentages sont écrits dans les segments.",
+    nonUtil: [
+      ["Angle", "Sept camemberts (un par année) seraient bien plus difficiles à comparer que des barres alignées."],
+      ["Luminosité", "Un dégradé d'une seule couleur ferait croire que les causes sont classées du moins au plus grave."],
+      ["Texture", "Réservée à l'impression en noir et blanc ; la teinte suffit à l'écran."],
+    ],
+    calcul: usa ? "Part d'une cause = minutes attribuées à cette cause ÷ total des minutes de retard (5 causes officielles du BTS)." : "Part d'une cause = minutes ATFM de cette cause ÷ total des minutes ATFM (retards imposés par le contrôle aérien).",
+    inter: "Bouton En parts / En minutes ; survol pour le nombre de minutes ; les filtres du haut s'appliquent.",
+    limite: usa ? "La météo ordinaire est classée dans « système aérien » : la part « météo » ne compte que la météo extrême." : "En Europe, seules les causes ATFM sont publiées : ce n'est pas l'ensemble des retards.",
+  };
+  if (id === "kpi3") return {
+    num: 3, titre: "Où sont les retards ?",
+    type: "Carte à symboles proportionnels + classement en barres",
+    but: "Situer les aéroports qui concentrent les retards et repérer les plus et les moins ponctuels.",
+    question: "Quels aéroports ont le plus de retards ?",
+    enc: [
+      { d: "Localisation (latitude, longitude)", t: "quantitative", c: "Position", q: "place sur la carte" },
+      { d: usa ? "Nombre de vols" : "Nombre de départs", t: "quantitative", c: "Aire", q: "surface du cercle" },
+      { d: mesureNom + " (5 classes)", t: "ordinale", c: "Luminosité", q: `bleu ${sens.peu} → ${sens.bcp}` },
+      { d: "Rang de l'aéroport", t: "ordinale", c: "Position", q: "ordre du classement" },
+      { d: mesureNom, t: "quantitative", c: "Longueur", q: "barre du classement" },
+      { d: "Aéroport", t: "nominale", c: "Forme", q: "cercle" },
+    ],
+    couleurs: Q.map((c, i) => ({ c, r: `Classe ${i + 1} : ` + d3.select("#k3-legend").selectAll("span").nodes()[i]?.textContent, n: "" })),
+    couleursNote: `Échelle séquentielle à <b>une seule teinte</b> (bleu, environ 213°) : seule la <b>luminosité</b> change, et la saturation reste forte. `
+      + `L'œil lit naturellement « plus ${sens.bcp} = plus de retard » ${sens.bcp === "foncé" ? "sur fond clair" : "(en mode sombre, l'échelle est inversée : c'est le plus lumineux qui ressort sur le fond noir)"}.`
+      + " Un arc-en-ciel aurait mélangé plusieurs teintes et rendu l'ordre illisible. Chaque cercle a un liseré de la couleur du fond pour rester visible quand il chevauche un voisin.",
+    pourquoi: "Sur une carte, la position est réservée à la géographie. Le retard, découpé en classes ordonnées, est codé par la luminosité (2e canal pour l'ordinal). Le trafic est codé par l'aire, un canal moins précis (4e) : c'est pourquoi le classement à droite reprend les valeurs avec des longueurs, beaucoup plus faciles à comparer.",
+    nonUtil: [
+      ["Teinte", "Plusieurs teintes feraient croire à des catégories (et non à un ordre de gravité)."],
+      ["Volume", "Des sphères 3D rendraient les tailles impossibles à comparer."],
+      ["Saturation", "Faire varier la saturation à luminosité fixe donne des différences trop faibles pour 5 classes."],
+    ],
+    calcul: "Classement limité aux aéroports avec assez de trafic dans l'année (seuil indiqué sous la liste), pour éviter les petits aéroports aux chiffres instables.",
+    inter: "Choix de l'année ; survol d'un cercle pour le détail ; clic sur un cercle ou un nom pour filtrer toute la page ; un pays ou un État choisi fait zoomer la carte.",
+    limite: "L'aire est moins précise que la longueur : pour comparer deux aéroports, utilisez le classement ou l'info-bulle.",
+  };
+  if (id === "kpi4") return {
+    num: 4, titre: "Combien coûtent les retards ?",
+    type: "Tuiles de chiffres clés + courbes en indice (2019 = 100)",
+    but: "Montrer que le coût augmente plus vite que les retards eux-mêmes, parce que chaque minute coûte plus cher.",
+    question: "À retard égal, payons-nous plus cher ?",
+    enc: [
+      { d: "Année", t: "ordinale", c: "Position", q: "axe horizontal" },
+      { d: "Évolution depuis 2019 (indice)", t: "quantitative", c: "Position", q: "axe vertical (100 = 2019)" },
+      { d: "Série (minutes, prix, coût)", t: "nominale", c: "Teinte", q: "couleur de la courbe" },
+      { d: "Série « coût total »", t: "nominale", c: "Longueur", q: "trait plus épais" },
+      { d: "Hausse / baisse vs 2019", t: "ordinale", c: "Teinte", q: "rouge = hausse, vert = baisse" },
+    ],
+    couleurs: [
+      { c: S[0], r: "Minutes de retard", n: "" }, { c: S[1], r: "Prix d'une minute", n: "" }, { c: S[2], r: "Coût total (trait plus épais)", n: "" },
+      { c: css("--up"), r: "Hausse par rapport à 2019", n: "" }, { c: css("--down"), r: "Baisse par rapport à 2019", n: "" },
+    ],
+    couleursNote: "Trois teintes nettement différentes (bleu, orange, vert) pour trois séries de nature différente ; elles ont une saturation proche pour ne pas en privilégier une. "
+      + "La courbe du <b>coût</b>, celle qui porte le message, est rendue plus visible par l'épaisseur du trait, pas par une couleur plus vive. Dans les tuiles, la hausse est en rouge-orangé et la baisse en vert, le code habituel pour « plus cher » et « moins cher », et toujours accompagné d'un signe + ou −.",
+    pourquoi: "Minutes, euros par minute et millions d'euros n'ont pas la même unité. Plutôt qu'un graphique à deux axes (trompeur), les trois séries sont ramenées à un indice 2019 = 100 sur un seul axe : on compare directement leurs vitesses de croissance. Les chiffres exacts sont dans les tuiles, lus directement (aucun canal graphique).",
+    nonUtil: [
+      ["Deuxième axe vertical", "Deux échelles sur un même graphique permettent de faire dire n'importe quoi aux courbes."],
+      ["Aire", "Des cercles de taille « coût » seraient bien moins précis qu'une courbe."],
+      ["Luminosité", "Les trois séries ne sont pas ordonnées : un dégradé suggérerait un ordre."],
+    ],
+    calcul: usa ? "Prix d'une minute (€) = prix publié par Airlines for America ($) ÷ taux de change moyen de l'année (BCE). Coût = minutes de retard × prix d'une minute."
+      : `Prix d'une minute (€) = 100 € (référence ${ANNEE_REF_EU}) ramené à l'année avec l'inflation de la zone euro (Eurostat). Coût = minutes de retard ATFM × prix d'une minute.`,
+    inter: "Choix de l'année comparée à 2019 ; survol des courbes pour les vraies valeurs ; détail du calcul dans le tableau dépliable ; les filtres du haut s'appliquent.",
+    limite: usa ? "2020 : pas de prix publié, donc pas de coût." : "Ne couvre que les retards imposés par le contrôle aérien : à ne pas comparer avec le coût américain.",
+  };
+  if (id === "kpi5") return {
+    num: 5, titre: "Comment le réseau aérien évolue-t-il ?",
+    type: K5.vue === "carte" ? "Graphe nœuds-liens sur la carte des États-Unis" : "Graphe nœuds-liens organisé par un algorithme de forces",
+    but: "Voir la structure du réseau (les grands carrefours), sa contraction pendant le Covid et sa reconstruction, mois par mois.",
+    question: "Quels aéroports relient le réseau, et comment a-t-il changé ?",
+    enc: [
+      { d: "Aéroport", t: "nominale", c: "Position", q: K5.vue === "carte" ? "place géographique" : "placé par les forces" },
+      { d: "Aéroport", t: "nominale", c: "Forme", q: "point rond" },
+      { d: "Liaison directe", t: "nominale", c: "Forme", q: "trait" },
+      { d: "Trafic de l'aéroport", t: "quantitative", c: "Aire", q: "taille du point" },
+      { d: "Nombre de vols de la liaison", t: "quantitative", c: "Longueur", q: "épaisseur du trait" },
+      { d: "Retard moyen de la liaison", t: "ordinale", c: "Luminosité", q: `bleu ${sens.peu} → ${sens.bcp}` },
+      { d: "Mois", t: "ordinale", c: "Position", q: "curseur, animation" },
+      { d: "Aéroport sélectionné", t: "nominale", c: "Luminosité", q: "le reste est atténué" },
+    ],
+    couleurs: [{ c: S[1], r: "Aéroports (nœuds)", n: "" }, ...Q.map((c, i) => ({ c, r: ["Liaison en avance (< 0 min)", "0 à 5 min", "5 à 10 min", "10 à 15 min", "15 min et plus"][i], n: "" }))],
+    couleursNote: "Deux familles de couleurs pour deux types d'objets : les <b>aéroports en orange</b> et les <b>liaisons en bleu</b>. Orange et bleu sont presque opposés sur le cercle des teintes : on distingue tout de suite un point d'un trait. "
+      + "Les liaisons suivent une échelle séquentielle à une seule teinte, où seule la <b>luminosité</b> varie, avec une saturation constante. Quand un aéroport est choisi, le reste est désaturé et rendu transparent pour faire ressortir ses liaisons.",
+    pourquoi: "Un réseau se lit avec des points et des traits. La position sert à la géographie (mode carte) ou à la structure (mode forces). Le retard est codé par la luminosité (2e canal pour l'ordinal) ; le nombre de vols par l'épaisseur, une longueur (2e canal pour le quantitatif).",
+    nonUtil: [
+      ["Teinte (pour le retard)", "Une teinte par classe de retard se confondrait avec l'orange des aéroports."],
+      ["Texture", "Des traits pointillés ou hachurés deviendraient illisibles avec des centaines de liaisons."],
+      ["Volume", "Une vue 3D du réseau cacherait des liaisons derrière d'autres."],
+    ],
+    calcul: "Une liaison = les vols dans les deux sens entre deux aéroports pendant le mois. Seules les liaisons au-dessus du seuil choisi sont dessinées ; les chiffres « aéroports » et « liaisons actives » comptent tout le réseau.",
+    inter: "Curseur des mois et bouton Animer ; curseur du seuil de vols ; Carte / Graphe de forces ; clic sur un aéroport pour isoler ses liaisons (et filtrer la page).",
+    limite: "EUROCONTROL ne publie pas les liaisons entre aéroports européens : réseau des États-Unis uniquement.",
+  };
+}
+
+const REGLE = {
+  kpi1: ["Une seule teinte (bleu)", "une seule série : la couleur ne code rien, la hauteur dit tout."],
+  kpi2: ["5 teintes distinctes, saturation forte", "catégories sans ordre : aucune cause ne domine visuellement."],
+  kpi3: ["1 teinte, luminosité croissante", "ordre des classes de retard : plus contrasté = plus de retard."],
+  kpi4: ["1 teinte par série", "3 séries distinctes ; hausse en rouge-orangé, baisse en vert."],
+  kpi5: ["Orange (aéroports) / bleus (liaisons)", "teintes opposées pour 2 objets ; luminosité = retard."],
+};
+const CANAUX = ["Position", "Longueur", "Angle", "Aire", "Volume", "Luminosité", "Saturation", "Teinte", "Texture", "Forme"];
+function ouvrirInfo(id) {
+  const I = infos(id), acc = css("--accent");
+  const tc = t => css(COUL_TYPE[t]);
+  const TYPE_LIB = { quantitative: "Quantitatif", ordinale: "Ordinal", nominale: "Nominal" };
+  // une ligne par variable (une variable peut utiliser plusieurs canaux)
+  const vars = [];
+  I.enc.forEach(e => { let v = vars.find(x => x.d === e.d && x.t === e.t); if (!v) { v = { d: e.d, t: e.t, canaux: [], q: [] }; vars.push(v); } v.canaux.push(e.c); v.q.push(e.q); });
+  const matrice = `<table class="mk"><thead><tr><th class="l">Variable</th><th>Type</th>${CANAUX.map(c => `<th>${c}</th>`).join("")}<th class="l">Encodage</th></tr></thead><tbody>
+    ${vars.map(v => `<tr><td class="l"><b>${v.d}</b></td><td><span class="ty" style="--c:${tc(v.t)}">${TYPE_LIB[v.t]}</span></td>
+      ${CANAUX.map(c => { const rg = MACKINLAY[v.t].indexOf(c) + 1, on = v.canaux.includes(c);
+        return `<td class="cell${on ? " on" : ""}" style="--c:${tc(v.t)};--a:${Math.round((11 - rg) * 3.2)}%" title="${c} : rang ${rg} pour une variable ${TYPE_LIB[v.t].toLowerCase()}">${on ? "✓ " : ""}${rg}</td>`; }).join("")}
+      <td class="l q">${v.q.join(" · ")}</td></tr>`).join("")}</tbody></table>`;
+  const sw = I.couleurs.map(c => { const h = d3.hsl(c.c);
+    return `<div class="sw2"><i style="background:${c.c}"></i><span><b>${c.r}</b><small>T ${isNaN(h.h) ? "—" : Math.round(h.h) + "°"} · S ${Math.round((h.s || 0) * 100)} % · L ${Math.round(h.l * 100)} %</small></span></div>`; }).join("");
+  d3.select("#modal-title").html(`<span class="num" style="width:34px;height:34px;font-size:16px;display:inline-grid;vertical-align:middle;margin-right:10px">${I.num}</span>${I.titre}`);
+  d3.select("#modal-body").html(`
+    <p class="mk-sub"><b>${I.type}</b> — ${I.but}</p>
+    <h4>Tableau de Mackinlay (1986)</h4>
+    <div class="table-wrap">${matrice}</div>
+    <p class="mk-leg"><span class="cell on demo" style="--c:${acc}">✓ 1</span> canal utilisé
+      <span class="cell demo" style="--c:${acc};--a:29%">1</span> … <span class="cell demo" style="--c:${acc};--a:3%">10</span> rang du canal pour ce type (1 = le plus précis)
+      ${["quantitative", "ordinale", "nominale"].map(t => `<span class="ty" style="--c:${tc(t)}">${TYPE_LIB[t]}</span>`).join(" ")}</p>
+    <h4>Couleurs — ${REGLE[id][0]}</h4>
+    <p class="mk-sub">${REGLE[id][1]}</p>
+    <div class="sw2-grid">${sw}</div>`);
+  const m = document.getElementById("modal");
+  m.hidden = false; document.body.style.overflow = "hidden";
+  m.querySelector(".modal-box").scrollTop = 0;
+  document.getElementById("modal-close").focus();
+}
+function fermerInfo() { document.getElementById("modal").hidden = true; document.body.style.overflow = ""; }
+document.querySelectorAll(".info-btn[data-info]").forEach(b => b.addEventListener("click", () => ouvrirInfo(b.dataset.info)));
+document.getElementById("modal-close").addEventListener("click", fermerInfo);
+document.getElementById("modal").addEventListener("click", e => { if (e.target.id === "modal") fermerInfo(); });
+addEventListener("keydown", e => { if (e.key === "Escape") fermerInfo(); });
+
+/* =====================================================================
+   FENÊTRES « MÉTHODE DE CALCUL »
+   ===================================================================== */
+function methode(id) {
+  const usa = ZONE === "USA";
+  const z = usa ? "États-Unis" : "Europe";
+  if (id === "kpi1") return {
+    num: 1, titre: "Les retards augmentent-ils ?",
+    cols: usa ? ["annee", "mois", "nb_retards_arrivee_15", "nb_vols_arrives", "somme_retard_arrivee_min", "nb_annules", "nb_vols"]
+              : ["annee", "mois", "depart_min_retard_toutes_causes", "nb_departs_avec_mesure_retard", "nb_departs"],
+    etapes: [
+      "Garder les lignes qui correspondent aux filtres (zone, pays ou État, aéroport, compagnie).",
+      "Additionner les colonnes par année (vue « Par année ») ou par mois (vue « Mois par mois »).",
+      "Diviser les totaux : on additionne d'abord, puis on divise, pour que chaque vol compte autant.",
+      "Saisonnalité : additionner chaque mois de l'année sur 2019-2025 sans 2020 (Covid), puis diviser.",
+    ],
+    formules: usa ? [
+      ["Part des vols en retard", "Σ nb_retards_arrivee_15 ÷ Σ nb_vols_arrives × 100"],
+      ["Retard moyen à l'arrivée (info-bulle)", "Σ somme_retard_arrivee_min ÷ Σ nb_vols_arrives"],
+      ["Vols annulés (info-bulle)", "Σ nb_annules ÷ Σ nb_vols × 100"],
+    ] : [["Retard moyen au départ", "Σ depart_min_retard_toutes_causes ÷ Σ nb_departs_avec_mesure_retard"]],
+    exemple: usa ? "Atlanta (ATL), 2024 : 67 041 vols en retard ÷ 337 662 vols arrivés = 19,9 % ; retard moyen 6,8 min ; 1,0 % d'annulations (sur 341 910 vols)." : "",
+    source: usa ? "BTS, Reporting Carrier On-Time Performance (vols intérieurs)." : "EUROCONTROL, retard au départ toutes causes.",
+    limite: usa ? "Un vol est « en retard » à partir de 15 minutes à l'arrivée (définition officielle du BTS)." : "Mesure publiée à partir de 2020 seulement : pas de barre pour 2019.",
+  };
+  if (id === "kpi2") return {
+    num: 2, titre: "Pourquoi les vols sont-ils en retard ?",
+    cols: usa ? ["min_cause_avion_precedent_retarde", "min_cause_compagnie", "min_cause_systeme_aviation_nas", "min_cause_meteo", "min_cause_surete"]
+              : ["atfm_min_capacite", "atfm_min_meteo", "atfm_min_personnel_atc", "atfm_min_perturbations_greves", "atfm_min_evenements"],
+    etapes: [
+      "Garder les lignes qui correspondent aux filtres.",
+      "Pour chaque année, additionner chacune des 5 colonnes de minutes : on obtient 5 totaux.",
+      "Transformer ces 5 colonnes en une variable « cause » à 5 modalités (passage du format large au format long).",
+      "Diviser chaque total par la somme des 5 (vue en %), ou afficher les minutes telles quelles.",
+    ],
+    formules: [["Part d'une cause (année N)", "Σ minutes de la cause ÷ Σ minutes des 5 causes × 100"]],
+    exemple: usa ? "USA 2024 : avion précédent 41,97 M min ÷ 103,79 M min = 40,4 %." : "",
+    source: usa ? "BTS : la compagnie déclare la répartition des minutes pour chaque vol arrivé avec 15 min de retard ou plus." : "EUROCONTROL : 16 codes de retard ATFM regroupés en 5 causes par le script Python.",
+    limite: usa ? "« Météo » = météo extrême seulement ; la météo ordinaire est comptée dans « système aérien »." : "Seuls les retards imposés par le contrôle aérien (ATFM) ont une cause publiée.",
+  };
+  if (id === "kpi3") return {
+    num: 3, titre: "Où sont les retards ?",
+    cols: usa ? ["aeroport_origine", "latitude_origine", "longitude_origine", "nb_vols", "nb_retards_arrivee_15", "nb_vols_arrives"]
+              : ["aeroport_origine", "latitude_origine", "longitude_origine", "nb_departs", "depart_min_retard_toutes_causes", "nb_departs_avec_mesure_retard"],
+    etapes: [
+      "Garder les lignes de l'année choisie et des filtres (pays ou État, compagnie).",
+      "Additionner par aéroport de départ.",
+      `Calculer la mesure de retard de chaque aéroport, puis la ranger dans une des 5 classes de couleur.`,
+      "Classement : garder les aéroports avec au moins min(20 000 ; 10 % du plus gros) vols, trier par retard.",
+    ],
+    formules: [
+      usa ? ["Retard de l'aéroport", "Σ nb_retards_arrivee_15 ÷ Σ nb_vols_arrives × 100"] : ["Retard de l'aéroport", "Σ depart_min_retard_toutes_causes ÷ Σ nb_departs_avec_mesure_retard"],
+      ["Taille du cercle", usa ? "surface ∝ Σ nb_vols" : "surface ∝ Σ nb_departs"],
+      ["Classes de couleur", usa ? "< 15 % · 15-20 · 20-25 · 25-30 · ≥ 30 %" : "< 10 min · 10-14 · 14-18 · 18-22 · ≥ 22 min"],
+    ],
+    exemple: "",
+    source: usa ? "BTS ; coordonnées OurAirports ; fond de carte us-atlas." : "EUROCONTROL ; coordonnées OurAirports ; fond de carte world-atlas.",
+    limite: "Seuils de couleur fixes, identiques pour toutes les années, pour pouvoir comparer les cartes entre elles.",
+  };
+  if (id === "kpi4") {
+    const anP = [...ANNEES, 2026];
+    const table = `<table class="mt"><thead><tr><th>Année</th><th class="n">Taux BCE<br>(1 € = … $)</th><th class="n">USA : prix publié</th><th class="n">USA : prix en €</th>
+      <th class="n">Inflation<br>zone euro</th><th class="n">Indice<br>(${ANNEE_REF_EU} = 1)</th><th class="n">Europe : prix en €</th></tr></thead><tbody>
+      ${anP.map(a => { const usd = D.coutUSD.get(a), t = TAUX_USD_PAR_EUR[a];
+        return `<tr class="${a === ANNEE_REF_EU ? "ref" : ""}"><td>${a}</td><td class="n">${t ? FR.format(",.4f")(t) : "—"}</td>
+          <td class="n">${usd != null ? fmt.d2(usd) + " $" : a === 2020 ? "non publié" : "—"}</td><td class="n"><b>${usd != null && t ? fmt.d2(usd / t) + " €" : "n.d."}</b></td>
+          <td class="n">${fmt.d1(INFLATION_ZONE_EURO[a])} %${a === 2026 ? "*" : ""}</td><td class="n">${FR.format(",.4f")(INDICE_PRIX[a])}</td><td class="n"><b>${fmt.d2(prixMinuteEU(a))} €</b></td></tr>`; }).join("")}
+      </tbody></table><p class="hint">* 2026 : moyenne des taux mensuels de janvier à septembre 2026, provisoire.</p>`;
+    return {
+      num: 4, titre: "Combien coûtent les retards ?",
+      cols: usa ? ["annee", "minutes_retard_arrivee_totales", "cout_par_minute"] : ["annee", "atfm_min_total"],
+      etapes: [
+        "Garder les lignes qui correspondent aux filtres, puis additionner les minutes de retard par année.",
+        usa ? "Convertir le prix d'une minute publié en dollars avec le taux de change moyen de l'année." : `Ramener les 100 € de référence (${ANNEE_REF_EU}) à chaque année avec l'inflation de la zone euro.`,
+        "Coût de l'année = minutes de retard × prix d'une minute en euros de cette année.",
+        "Courbes : diviser chaque série par sa valeur de 2019 et multiplier par 100 (indice).",
+      ],
+      formules: [
+        usa ? ["Prix d'une minute (€)", "cout_par_minute ($) ÷ taux BCE de l'année"] : ["Prix d'une minute (€)", `100 € × indice(année)`],
+        ...(usa ? [] : [["Indice des prix", "indice(N) = indice(N + 1) ÷ (1 + inflation(N + 1))"]]),
+        ["Coût de l'année", usa ? "Σ minutes_retard_arrivee_totales × prix (€)" : "Σ atfm_min_total × prix (€)"],
+        ["Indice 2019 = 100", "valeur de l'année ÷ valeur de 2019 × 100"],
+      ],
+      table, exemple: usa ? "USA 2025 : 118,8 M min × 87,09 € (98,41 $ ÷ 1,1300) ≈ 10,34 Md€." : "",
+      source: usa ? "Airlines for America (coût d'une minute) ; BCE (taux de change) ; BTS (minutes)." : `EUROCONTROL (minutes ATFM, 100 € par minute) ; Eurostat (inflation, indice HICP).`,
+      limite: usa ? "Pas de prix publié pour 2020 : coût non calculé cette année-là. Estimation, pas un coût comptable." : "Ne couvre que les retards imposés par le contrôle aérien (ATFM). Estimation, pas un coût comptable.",
+    };
+  }
+  if (id === "kpi5") return {
+    num: 5, titre: "Comment le réseau aérien évolue-t-il ?",
+    cols: ["annee", "mois", "aeroport_origine", "aeroport_destination", "nb_vols", "nb_vols_arrives", "somme_retard_arrivee_min"],
+    etapes: [
+      "Pour le mois choisi, additionner les vols de chaque paire d'aéroports, toutes compagnies (A → B et B → A = une seule liaison).",
+      "Degré d'un aéroport = nombre de liaisons différentes qui le touchent ; taille du point = départs + arrivées.",
+      "Ne dessiner que les liaisons au-dessus du seuil de vols choisi (les compteurs, eux, comptent tout le réseau).",
+      "Vue « Graphe de forces » : positions calculées par simulation (attraction des liaisons, répulsion des aéroports).",
+    ],
+    formules: [
+      ["Vols d'une liaison", "Σ nb_vols (A → B) + Σ nb_vols (B → A)"],
+      ["Retard moyen d'une liaison", "Σ somme_retard_arrivee_min ÷ Σ nb_vols_arrives"],
+      ["Connexions moyennes", "2 × nombre de liaisons ÷ nombre d'aéroports"],
+    ],
+    exemple: "Avril 2020 vs avril 2019 : vols −49 % ; liaisons d'au moins 300 vols : 647 → 242.",
+    source: "BTS, Reporting Carrier On-Time Performance (toutes compagnies).",
+    limite: "États-Unis uniquement : EUROCONTROL ne publie pas les liaisons entre aéroports européens.",
+  };
+}
+function ouvrirMethode(id) {
+  const M = methode(id), z = (id === "kpi5" ? "États-Unis" : ZONE === "USA" ? "États-Unis" : "Europe");
+  d3.select("#modal-title").html(`<span class="num" style="width:34px;height:34px;font-size:16px;display:inline-grid;vertical-align:middle;margin-right:10px">${M.num}</span>Méthode de calcul — ${M.titre} <span class="zone-tag" style="font-size:12px">${z}</span>`);
+  d3.select("#modal-body").html(`
+    <h4>Colonnes de <code>base.csv</code> utilisées</h4>
+    <div>${M.cols.map(c => `<code class="colchip">${c}</code>`).join("")}</div>
+    <h4>Étapes</h4>
+    <ol class="steps">${M.etapes.map(e => `<li>${e}</li>`).join("")}</ol>
+    <h4>Formules</h4>
+    <div class="formules">${M.formules.map(([n, f]) => `<div><span>${n}</span><code>${f}</code></div>`).join("")}</div>
+    ${M.table ? `<h4>Prix d'une minute de retard, année par année</h4><div class="table-wrap">${M.table}</div>` : ""}
+    ${M.exemple ? `<p class="box" style="margin-top:14px"><b>Exemple :</b> ${M.exemple}</p>` : ""}
+    <div class="mk-foot"><div><span>Source</span>${M.source}</div><div><span>Limite</span>${M.limite}</div></div>
+    <p class="hint" style="margin-top:10px">Σ = somme sur les lignes sélectionnées par les filtres. Europe : ${PAYS_EXCLUS.size} pays hors d'Europe exclus (${[...PAYS_EXCLUS].map(p => PAYS_FR[p] || p).join(", ")}).</p>`);
+  const m = document.getElementById("modal");
+  m.hidden = false; document.body.style.overflow = "hidden";
+  m.querySelector(".modal-box").scrollTop = 0;
+  document.getElementById("modal-close").focus();
+}
+document.querySelectorAll(".calc-btn").forEach(b => b.addEventListener("click", () => ouvrirMethode(b.dataset.calc)));
+
+/* =====================================================================
+   DÉMARRAGE
+   ===================================================================== */
+function toutDessiner() { majFiltres(); enBref(); kpi1(); kpi2(); kpi3(); kpi4(); kpi5(); }
+
+d3.select("#f-region").on("change", function () { F.region = this.value; F.aero = ""; toutDessiner(); });
+d3.select("#f-aero").on("change", function () { F.aero = this.value; toutDessiner(); });
+d3.select("#f-cie").on("change", function () { F.cie = this.value; toutDessiner(); });
+d3.select("#f-reset").on("click", () => { F.region = ""; F.aero = ""; F.cie = ""; toutDessiner(); });
+
+(async function demarrer() {
+  try {
+    const t0 = performance.now();
+    await d3.csv(CHEMIN_BASE, lireLigne);
+    D.routes = new Map([..._routes].map(([k, m]) => [k, [...m.values()]]));
+    D.mois = [...D.routes.keys()].sort((a, b) => a - b);
+    _usIdx.clear(); _euIdx.clear(); _routes.clear();
+    const duree = (performance.now() - t0) / 1000;
+    try {
+      const [monde, usa] = await Promise.all([d3.json(URL_MONDE), d3.json(URL_USA)]);
+      FONDS = { pays: topojson.feature(monde, monde.objects.countries), etats: topojson.feature(usa, usa.objects.states) };
+    } catch (e) { console.warn("Fonds de carte indisponibles", e); }
+    segment("#zone", [{ value: "USA", label: "États-Unis" }, { value: "Europe", label: "Europe" }], ZONE,
+      v => { ZONE = v; F.region = ""; F.aero = ""; F.cie = ""; toutDessiner(); });
+    toutDessiner();
+    d3.select("#loading").remove();
+  } catch (err) {
+    console.error(err);
+    d3.select("#loading-msg").html(`<b style="color:var(--up)">Impossible de lire la base.</b><br>
+      Vérifiez que le fichier est bien dans <code>base/base.csv</code>, puis ouvrez la page via un serveur local :
+      dans le dossier du projet, <code>python3 -m http.server 8000</code>, puis
+      <code>http://localhost:8000/visualisations/synthese.html</code> (de préférence avec Chrome ou Firefox).<br><small>${err}</small>`);
+    d3.select(".spin").remove();
+  }
+})();
+
+let resizeT;
+addEventListener("resize", () => { clearTimeout(resizeT); resizeT = setTimeout(() => { if (D.nLignes) toutDessiner(); }, 200); });
+</script>
+</body>
+</html>
